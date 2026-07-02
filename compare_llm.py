@@ -44,6 +44,8 @@ class TaskResult:
     deepseek_conf: int | None = None
     agree: bool = False
     delta: int | None = None
+    llm_calls: int = 0
+    meaningful: bool = False
 
 
 @dataclass
@@ -69,10 +71,11 @@ def _best_website(
     deepseek: LLMClient,
     row: pd.Series,
     name: str,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, int]:
     """Return best (url, conf, yn) per provider from shared search results."""
     mm_best = {"url": "", "conf": 0, "yn": "N"}
     ds_best = {"url": "", "conf": 0, "yn": "N"}
+    llm_calls = 0
     candidates: list[tuple[str, str]] = []
 
     for q in website_queries(row):
@@ -95,12 +98,13 @@ def _best_website(
         seen.add(url)
         mm_conf = minimax.score_match(url, name, ctx)
         ds_conf = deepseek.score_match(url, name, ctx)
+        llm_calls += 2
         if mm_conf > mm_best["conf"]:
             mm_best = {"url": url, "conf": mm_conf, "yn": _website_verdict(mm_conf)}
         if ds_conf > ds_best["conf"]:
             ds_best = {"url": url, "conf": ds_conf, "yn": _website_verdict(ds_conf)}
 
-    return mm_best, ds_best
+    return mm_best, ds_best, llm_calls
 
 
 def _best_facebook(
@@ -109,9 +113,10 @@ def _best_facebook(
     deepseek: LLMClient,
     row: pd.Series,
     name: str,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, int]:
     mm_best = {"url": "", "conf": 0, "yn": "N"}
     ds_best = {"url": "", "conf": 0, "yn": "N"}
+    llm_calls = 0
 
     for q in facebook_queries(row):
         q = " ".join(str(q).split())
@@ -124,6 +129,7 @@ def _best_facebook(
                 ctx = f"Title: {r.title}\nSnippet: {r.snippet}"
                 mm_conf = minimax.score_match(r.title, name, ctx)
                 ds_conf = deepseek.score_match(r.title, name, ctx)
+                llm_calls += 2
                 if mm_conf > mm_best["conf"]:
                     mm_best = {"url": r.url, "conf": mm_conf, "yn": "N"}
                 if ds_conf > ds_best["conf"]:
@@ -138,13 +144,14 @@ def _best_facebook(
                 yn, conf = llm.classify_fb_page(page.text, name)
                 best["yn"] = yn
                 best["conf"] = max(conf, best["conf"])
+                llm_calls += 1
             except Exception:
                 if best["conf"] >= 85:
                     best["yn"] = "Y"
                 elif best["conf"] >= 60:
                     best["yn"] = "UNCERTAIN"
 
-    return mm_best, ds_best
+    return mm_best, ds_best, llm_calls
 
 
 def _address_sample(
@@ -154,16 +161,16 @@ def _address_sample(
     row: pd.Series,
     name: str,
     website_url: str,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, int]:
     if not website_url:
-        return {}, {}
+        return {}, {}, 0
     try:
         page = browser.fetch_page(website_url)
     except Exception:
-        return {}, {}
+        return {}, {}, 0
     mm = minimax.extract_address(page.text, name)
     ds = deepseek.extract_address(page.text, name)
-    return mm, ds
+    return mm, ds, 2
 
 
 def compare_record(
@@ -178,23 +185,25 @@ def compare_record(
     out: list[TaskResult] = []
 
     logger.info(f"Comparing record {lic} — {name}")
-    mm_web, ds_web = _best_website(browser, minimax, deepseek, row, name)
+    mm_web, ds_web, web_calls = _best_website(browser, minimax, deepseek, row, name)
     out.append(
         TaskResult(
             task="website_yn",
             license_number=lic,
             business_name=name,
-            input_summary=f"best_url mm={mm_web['url'][:80]} ds={ds_web['url'][:80]}",
+            input_summary=f"candidates_scored={web_calls // 2}",
             minimax_value=mm_web["yn"],
             deepseek_value=ds_web["yn"],
             minimax_conf=mm_web["conf"],
             deepseek_conf=ds_web["conf"],
             agree=mm_web["yn"] == ds_web["yn"],
             delta=abs(mm_web["conf"] - ds_web["conf"]),
+            llm_calls=web_calls,
+            meaningful=web_calls > 0,
         )
     )
 
-    mm_fb, ds_fb = _best_facebook(browser, minimax, deepseek, row, name)
+    mm_fb, ds_fb, fb_calls = _best_facebook(browser, minimax, deepseek, row, name)
     out.append(
         TaskResult(
             task="facebook_yn",
@@ -207,11 +216,13 @@ def compare_record(
             deepseek_conf=ds_fb["conf"],
             agree=mm_fb["yn"] == ds_fb["yn"],
             delta=abs(mm_fb["conf"] - ds_fb["conf"]),
+            llm_calls=fb_calls,
+            meaningful=fb_calls > 0,
         )
     )
 
     web_url = mm_web["url"] or ds_web["url"]
-    mm_addr, ds_addr = _address_sample(browser, minimax, deepseek, row, name, web_url)
+    mm_addr, ds_addr, addr_calls = _address_sample(browser, minimax, deepseek, row, name, web_url)
     mm_full = mm_addr.get("full", "")
     ds_full = ds_addr.get("full", "")
     mm_conf = int(mm_addr.get("confidence", 0) or 0) if mm_addr else 0
@@ -228,6 +239,8 @@ def compare_record(
             deepseek_conf=ds_conf,
             agree=(mm_full.lower() == ds_full.lower()) if mm_full and ds_full else mm_full == ds_full,
             delta=abs(mm_conf - ds_conf),
+            llm_calls=addr_calls,
+            meaningful=addr_calls > 0,
         )
     )
 
@@ -257,6 +270,8 @@ def write_report(
                 "minimax_conf": r.minimax_conf,
                 "deepseek_conf": r.deepseek_conf,
                 "agree": r.agree,
+                "meaningful": r.meaningful,
+                "llm_calls": r.llm_calls,
                 "conf_delta": r.delta,
             }
         )
@@ -283,7 +298,15 @@ def write_report(
     ]
 
     total_agree = sum(1 for r in run.results if r.agree)
+    meaningful = [r for r in run.results if r.meaningful]
+    meaningful_agree = sum(1 for r in meaningful if r.agree)
     lines.append(f"- Overall agreement: **{total_agree}/{len(run.results)}** ({100*total_agree/max(len(run.results),1):.0f}%)")
+    lines.append(
+        f"- Meaningful comparisons (≥1 LLM call): **{meaningful_agree}/{len(meaningful)}** "
+        f"({100*meaningful_agree/max(len(meaningful),1):.0f}% of {len(meaningful)} scored tasks)"
+    )
+    if len(meaningful) < len(run.results) * 0.5:
+        lines.append("- ⚠️ Many tasks had no search candidates — increase `SEARCH_DELAY_SEC` and re-run.")
     lines.append("")
 
     for task, items in sorted(by_task.items()):

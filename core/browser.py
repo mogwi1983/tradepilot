@@ -24,6 +24,7 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
 DDG_URL = "https://html.duckduckgo.com/html/"
+SEARCH_DELAY_SEC = float(os.getenv("SEARCH_DELAY_SEC", "1.5"))
 
 
 @dataclass
@@ -72,6 +73,7 @@ class BrowserSession:
             return _parse_ddg(resp.text, max_results=max_results)
 
         results = self._retry(_do, query)
+        time.sleep(SEARCH_DELAY_SEC)
         if self.logger:
             self.logger.debug(f"search {query!r} -> {len(results)} results")
         return results
