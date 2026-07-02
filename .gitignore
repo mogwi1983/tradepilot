@@ -1,0 +1,36 @@
+# Secrets — never commit
+.env.local
+.env
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Pipeline runtime (logs stay local; structure tracked via .gitkeep)
+runs/*/
+!runs/.gitkeep
+!runs/README.md
+
+# Data outputs (source CSVs in data/source/ are committed; phase outputs are not)
+data/output/*.csv
+data/output/*.md
+!data/output/.gitkeep
+
+# Temp / atomic write artifacts
+*.tmp
+*.swp

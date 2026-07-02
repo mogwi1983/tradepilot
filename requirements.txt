@@ -1,0 +1,8 @@
+# Pin major versions when implementing — see CURSOR-BOOTSTRAP.md Step 6
+browser-use>=0.1
+openai>=1.0
+pandas>=2.0
+httpx>=0.27
+python-dotenv>=1.0
+requests>=2.31
+lob-python>=4.0
