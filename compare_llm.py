@@ -302,11 +302,11 @@ def write_report(
     meaningful_agree = sum(1 for r in meaningful if r.agree)
     lines.append(f"- Overall agreement: **{total_agree}/{len(run.results)}** ({100*total_agree/max(len(run.results),1):.0f}%)")
     lines.append(
-        f"- Meaningful comparisons (≥1 LLM call): **{meaningful_agree}/{len(meaningful)}** "
+        f"- Meaningful comparisons (>=1 LLM call): **{meaningful_agree}/{len(meaningful)}** "
         f"({100*meaningful_agree/max(len(meaningful),1):.0f}% of {len(meaningful)} scored tasks)"
     )
     if len(meaningful) < len(run.results) * 0.5:
-        lines.append("- ⚠️ Many tasks had no search candidates — increase `SEARCH_DELAY_SEC` and re-run.")
+        lines.append("- WARNING: Many tasks had no search candidates — increase SEARCH_DELAY_SEC and re-run.")
     lines.append("")
 
     for task, items in sorted(by_task.items()):
@@ -329,7 +329,7 @@ def write_report(
     lines.extend(
         [
             "## Recommendation",
-            "If agreement ≥ 85% and avg confidence delta < 15, MiniMax M2.7 is safe as default.",
+            "If agreement >= 85% and avg confidence delta < 15, MiniMax M2.7 is safe as default.",
             "Review disagreements in `comparison_detail.csv` before full pilot run.",
             "",
             "## Next step",
@@ -341,7 +341,10 @@ def write_report(
     summary_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"\nWrote {summary_path}")
     print(f"Wrote {detail_path}")
-    print("\n".join(lines[:25]))
+    try:
+        print("\n".join(lines[:25]))
+    except UnicodeEncodeError:
+        print("(Summary contains unicode — see comparison_summary.md)")
 
 
 def main(argv: list[str] | None = None) -> int:

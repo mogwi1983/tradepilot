@@ -1,20 +1,19 @@
 """
 HTTP search + page fetch for pipeline phases.
 
-Uses DuckDuckGo HTML search and httpx page fetch. browser-use Agent is not invoked
-per-query (too slow/costly); swap this module if full browser automation is required.
+Primary search: ddgs package (DuckDuckGo API). HTML scrape fallback if ddgs fails.
 """
 
 from __future__ import annotations
 
 import os
-import re
 import time
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+from ddgs import DDGS
 
 from core.env import load_env
 from core.logger import RunLogger
@@ -24,7 +23,7 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
 DDG_URL = "https://html.duckduckgo.com/html/"
-SEARCH_DELAY_SEC = float(os.getenv("SEARCH_DELAY_SEC", "1.5"))
+SEARCH_DELAY_SEC = float(os.getenv("SEARCH_DELAY_SEC", "2.0"))
 
 
 @dataclass
@@ -47,13 +46,14 @@ class BrowserSession:
         load_env()
         self.logger = logger
         self._client = httpx.Client(
-            timeout=30.0,
+            timeout=60.0,
             follow_redirects=True,
             headers={"User-Agent": USER_AGENT},
         )
+        self._ddgs = DDGS()
 
-    def _retry(self, fn, query: str, attempts: int = 3):
-        delay = 1.0
+    def _retry(self, fn, label: str, attempts: int = 3):
+        delay = 2.0
         last_err: Exception | None = None
         for i in range(attempts):
             try:
@@ -61,18 +61,44 @@ class BrowserSession:
             except Exception as exc:
                 last_err = exc
                 if self.logger:
-                    self.logger.debug(f"search retry {i + 1}/{attempts} for {query!r}: {exc}")
+                    self.logger.debug(f"{label} retry {i + 1}/{attempts}: {exc}")
                 time.sleep(delay)
                 delay *= 2
         raise last_err  # type: ignore[misc]
 
+    def _search_ddgs(self, query: str, *, max_results: int) -> list[SearchResult]:
+        raw = list(self._ddgs.text(query, max_results=max_results))
+        results: list[SearchResult] = []
+        for item in raw:
+            url = item.get("href") or item.get("link") or ""
+            if not url.startswith("http"):
+                continue
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=url,
+                    snippet=item.get("body", item.get("snippet", "")),
+                )
+            )
+        return results
+
+    def _search_html(self, query: str, *, max_results: int) -> list[SearchResult]:
+        resp = self._client.post(DDG_URL, data={"q": query})
+        resp.raise_for_status()
+        return _parse_ddg_html(resp.text, max_results=max_results)
+
     def search(self, query: str, *, max_results: int = 8) -> list[SearchResult]:
         def _do() -> list[SearchResult]:
-            resp = self._client.post(DDG_URL, data={"q": query})
-            resp.raise_for_status()
-            return _parse_ddg(resp.text, max_results=max_results)
+            try:
+                results = self._search_ddgs(query, max_results=max_results)
+                if results:
+                    return results
+            except Exception as exc:
+                if self.logger:
+                    self.logger.debug(f"ddgs failed for {query!r}: {exc}")
+            return self._search_html(query, max_results=max_results)
 
-        results = self._retry(_do, query)
+        results = self._retry(_do, f"search {query!r}")
         time.sleep(SEARCH_DELAY_SEC)
         if self.logger:
             self.logger.debug(f"search {query!r} -> {len(results)} results")
@@ -94,7 +120,7 @@ class BrowserSession:
                     links.append(href)
             return PageContent(url=url, title=title, text=text[:50000], links=links[:200])
 
-        page = self._retry(_do, url)
+        page = self._retry(_do, f"fetch {url}")
         if self.logger:
             self.logger.debug(f"fetch {url} -> {len(page.text)} chars")
         return page
@@ -111,7 +137,7 @@ def _unwrap_ddg_href(href: str) -> str:
     return href
 
 
-def _parse_ddg(html: str, *, max_results: int) -> list[SearchResult]:
+def _parse_ddg_html(html: str, *, max_results: int) -> list[SearchResult]:
     soup = BeautifulSoup(html, "html.parser")
     results: list[SearchResult] = []
     for block in soup.select(".result"):
