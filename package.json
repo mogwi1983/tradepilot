@@ -1,0 +1,8 @@
+{
+  "name": "tradepilot",
+  "private": true,
+  "scripts": {
+    "dev": ".\\.venv\\Scripts\\python.exe -m dashboard",
+    "dashboard": ".\\.venv\\Scripts\\python.exe -m dashboard"
+  }
+}

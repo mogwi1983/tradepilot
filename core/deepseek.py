@@ -1,23 +1,25 @@
-"""
-DeepSeek API client (OpenAI-compatible).
-
-Spec: CURSOR-BOOTSTRAP.md Step 2 — core/deepseek.py
-Env: DEEPSEEK_API_KEY in .env.local
-Base URL: https://api.deepseek.com
-"""
+"""Backward-compatible alias — prefer core.llm.get_llm_client()."""
 
 from __future__ import annotations
 
-
-def reason(prompt: str, context: str) -> str:
-    raise NotImplementedError
+from core.llm import LLMClient
 
 
-def score_match(candidate: str, target: str, context: str) -> int:
-    """Return 0–100 confidence that candidate matches target contractor."""
-    raise NotImplementedError
+class DeepSeekClient:
+    """DeepSeek provider wrapper for legacy imports."""
 
+    def __init__(self, logger=None) -> None:
+        self._client = LLMClient.from_provider("deepseek", logger)
+        self.logger = logger
 
-def extract_address(page_text: str, business_name: str) -> dict[str, str]:
-    """Return address fields dict or empty dict if none found."""
-    raise NotImplementedError
+    def reason(self, prompt: str, context: str) -> str:
+        return self._client.reason(prompt, context)
+
+    def score_match(self, candidate: str, target: str, context: str) -> int:
+        return self._client.score_match(candidate, target, context)
+
+    def classify_fb_page(self, page_text: str, business_name: str) -> tuple[str, int]:
+        return self._client.classify_fb_page(page_text, business_name)
+
+    def extract_address(self, page_text: str, business_name: str) -> dict[str, str]:
+        return self._client.extract_address(page_text, business_name)

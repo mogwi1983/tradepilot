@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TradePilot — Pipeline Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface2: #243044;
+      --border: #2d3a4f;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --pending: #64748b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .header h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .header .meta {
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.875rem;
+    }
+
+    .controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      color: var(--muted);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge.live { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+    .badge.error { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+    main {
+      padding: 1.5rem 2rem 3rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.1rem 1.25rem;
+    }
+
+    .kpi .label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+    }
+
+    .kpi .value {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .kpi .sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+
+    .card h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .phase-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .phase-row {
+      display: grid;
+      grid-template-columns: 2rem 1fr 3.5rem;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.875rem;
+    }
+
+    .phase-row .num {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bar-track {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #60a5fa);
+      border-radius: 4px;
+      transition: width 0.4s ease;
+      min-width: 0;
+    }
+
+    .bar-fill.done { background: linear-gradient(90deg, var(--success), #4ade80); }
+
+    .phase-pct {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 220px;
+    }
+
+    .chart-wrap.tall { height: 260px; }
+
+    .funnel {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .funnel-step {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .funnel-label {
+      flex: 0 0 140px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .funnel-bar-wrap {
+      flex: 1;
+      height: 28px;
+      background: var(--surface2);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .funnel-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, var(--accent));
+      border-radius: 6px;
+      transition: width 0.4s ease;
+      display: flex;
+      align-items: center;
+      padding-left: 0.5rem;
+      min-width: 2rem;
+    }
+
+    .funnel-count {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+    }
+
+    tr:hover td { background: var(--surface2); }
+
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 0.35rem;
+    }
+
+    .status-success { background: var(--success); }
+    .status-warning { background: var(--warning); }
+    .status-failed { background: var(--danger); }
+    .status-pending { background: var(--pending); }
+
+    .table-wrap {
+      max-height: 420px;
+      overflow: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .filter-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .error-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .lob-budget {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      font-size: 0.9rem;
+    }
+
+    .lob-budget span strong {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>TradePilot Pipeline Dashboard</h1>
+      <div class="meta" id="run-meta">Loading…</div>
+    </div>
+    <div class="controls">
+      <span class="badge live" id="status-badge">Live</span>
+      <label>
+        <input type="checkbox" id="auto-refresh" checked />
+        Auto-refresh (5s)
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <div id="error-banner" class="error-banner" style="display:none"></div>
+
+    <section class="kpis" id="kpis"></section>
+
+    <section class="grid-2">
+      <div class="card">
+        <h2>Phase progress</h2>
+        <div class="phase-list" id="phase-list"></div>
+      </div>
+      <div class="card">
+        <h2>Mail-ready funnel</h2>
+        <div class="funnel" id="funnel"></div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card">
+        <h2>Website detection</h2>
+        <div class="chart-wrap"><canvas id="chart-website"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Facebook detection</h2>
+        <div class="chart-wrap"><canvas id="chart-facebook"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Address resolution</h2>
+        <div class="chart-wrap"><canvas id="chart-address"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Batch assignment</h2>
+        <div class="chart-wrap"><canvas id="chart-batch"></canvas></div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card">
+        <h2>Lob deliverability</h2>
+        <div class="chart-wrap"><canvas id="chart-lob"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Confidence tiers</h2>
+        <div class="chart-wrap"><canvas id="chart-tiers"></canvas></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-bottom: 1.5rem;">
+      <h2>Lob budget</h2>
+      <div class="lob-budget" id="lob-budget"></div>
+    </section>
+
+    <section class="card">
+      <h2>Records (sorted by status)</h2>
+      <div class="filter-row" id="filters"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>License</th>
+              <th>County</th>
+              <th>Business</th>
+              <th>Website</th>
+              <th>FB</th>
+              <th>Address</th>
+              <th>Lob</th>
+              <th>Batch</th>
+              <th>Ready</th>
+            </tr>
+          </thead>
+          <tbody id="records-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const COLORS = {
+      Y: "#22c55e",
+      N: "#ef4444",
+      UNCERTAIN: "#f59e0b",
+      pending: "#64748b",
+      batch_1: "#3b82f6",
+      batch_2: "#8b5cf6",
+      excluded: "#f59e0b",
+      unresolved: "#64748b",
+      deliverable: "#22c55e",
+      undeliverable: "#ef4444",
+      not_called: "#64748b",
+      other: "#94a3b8",
+      A: "#22c55e",
+      B: "#f59e0b",
+      C: "#ef4444",
+    };
+
+    const charts = {};
+    let allRecords = [];
+    let activeFilter = "all";
+    let refreshTimer = null;
+
+    function doughnutOptions() {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom", labels: { color: "#8b9cb3", padding: 12 } },
+        },
+      };
+    }
+
+    function upsertChart(id, labels, data, colors) {
+      const ctx = document.getElementById(id);
+      if (charts[id]) {
+        charts[id].data.labels = labels;
+        charts[id].data.datasets[0].data = data;
+        charts[id].data.datasets[0].backgroundColor = colors;
+        charts[id].update("none");
+        return;
+      }
+      charts[id] = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+          labels,
+          datasets: [{ data, backgroundColor: colors, borderWidth: 0 }],
+        },
+        options: doughnutOptions(),
+      });
+    }
+
+    function renderKpis(data) {
+      const kpis = [
+        { label: "Total records", value: data.total_records, sub: data.run_id },
+        { label: "Mail ready", value: data.funnel?.[3]?.count ?? 0, sub: `${data.success_rate ?? 0}% success rate` },
+        { label: "Address found", value: data.funnel?.[1]?.count ?? 0, sub: `${data.address_rate ?? 0}% of list` },
+        { label: "Batch 1", value: data.batch?.batch_1 ?? 0, sub: `${data.batch?.batch_2 ?? 0} batch 2` },
+        { label: "Excluded", value: data.batch?.excluded ?? 0, sub: `${data.batch?.unresolved ?? 0} unresolved` },
+      ];
+      document.getElementById("kpis").innerHTML = kpis.map(k => `
+        <div class="kpi">
+          <div class="label">${k.label}</div>
+          <div class="value">${k.value}</div>
+          <div class="sub">${k.sub}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderPhases(phases) {
+      document.getElementById("phase-list").innerHTML = (phases || []).map(p => `
+        <div class="phase-row">
+          <span class="num">${p.id}</span>
+          <div>
+            <div style="margin-bottom:0.2rem">${p.name}</div>
+            <div class="bar-track">
+              <div class="bar-fill ${p.pct >= 100 ? "done" : ""}" style="width:${p.pct}%"></div>
+            </div>
+          </div>
+          <span class="phase-pct">${p.processed}/${p.total}</span>
+        </div>
+      `).join("");
+    }
+
+    function renderFunnel(funnel, total) {
+      const max = total || 1;
+      document.getElementById("funnel").innerHTML = (funnel || []).map(step => {
+        const pct = Math.max(4, (step.count / max) * 100);
+        return `
+          <div class="funnel-step">
+            <span class="funnel-label">${step.stage}</span>
+            <div class="funnel-bar-wrap">
+              <div class="funnel-bar" style="width:${pct}%">
+                <span class="funnel-count">${step.count}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function chartFromMap(id, map) {
+      const labels = Object.keys(map);
+      const data = labels.map(k => map[k]);
+      const colors = labels.map(k => COLORS[k] || "#94a3b8");
+      upsertChart(id, labels, data, colors);
+    }
+
+    function renderLobBudget(budget) {
+      const b = budget || {};
+      document.getElementById("lob-budget").innerHTML = `
+        <span><strong>${b.remaining ?? 0}</strong> remaining</span>
+        <span><strong>${b.used ?? 0}</strong> used</span>
+        <span><strong>${b.total_free_verifications ?? 0}</strong> total free</span>
+        <span>Updated: ${b.last_updated || "—"}</span>
+      `;
+    }
+
+    function statusLabel(status) {
+      const map = { success: "Ready", warning: "Review", failed: "Failed", pending: "Pending" };
+      return map[status] || status;
+    }
+
+    function renderRecords(records) {
+      allRecords = records || [];
+      const filters = ["all", "success", "warning", "failed", "pending"];
+      document.getElementById("filters").innerHTML = filters.map(f => `
+        <button class="filter-btn ${activeFilter === f ? "active" : ""}" data-filter="${f}">
+          ${f === "all" ? "All" : statusLabel(f)}
+        </button>
+      `).join("");
+
+      document.querySelectorAll(".filter-btn").forEach(btn => {
+        btn.onclick = () => {
+          activeFilter = btn.dataset.filter;
+          renderRecords(allRecords);
+        };
+      });
+
+      const filtered = activeFilter === "all"
+        ? allRecords
+        : allRecords.filter(r => r.status === activeFilter);
+
+      document.getElementById("records-body").innerHTML = filtered.map(r => `
+        <tr>
+          <td>
+            <span class="status-dot status-${r.status}"></span>${statusLabel(r.status)}
+          </td>
+          <td>${r.license_number || ""}</td>
+          <td>${r.county || ""}</td>
+          <td title="${r.business_name_raw || r.owner_name_raw || ""}">
+            ${(r.business_name_raw || r.owner_name_raw || "").slice(0, 32)}
+          </td>
+          <td>${r["website_y/n"] || "—"}</td>
+          <td>${r["fb_y/n"] || "—"}</td>
+          <td>${r.address_found || "—"}</td>
+          <td>${r.lob_deliverability || "—"}</td>
+          <td>${r.batch_assignment || "—"}</td>
+          <td>${r.lob_ready || "—"}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch("/api/stats");
+        const data = await res.json();
+        const banner = document.getElementById("error-banner");
+        const badge = document.getElementById("status-badge");
+
+        if (data.error) {
+          banner.style.display = "block";
+          banner.textContent = data.error;
+          badge.className = "badge error";
+          badge.textContent = "Error";
+          return;
+        }
+
+        banner.style.display = "none";
+        badge.className = "badge live";
+        badge.textContent = "Live";
+
+        const updated = new Date(data.generated_at).toLocaleString();
+        document.getElementById("run-meta").textContent =
+          `Run: ${data.run_id} · ${data.total_records} records · ${data.output_file} · Updated ${updated}`;
+
+        renderKpis(data);
+        renderPhases(data.phases);
+        renderFunnel(data.funnel, data.total_records);
+        chartFromMap("chart-website", data.website);
+        chartFromMap("chart-facebook", data.facebook);
+        chartFromMap("chart-address", data.address);
+        chartFromMap("chart-batch", data.batch);
+        chartFromMap("chart-lob", data.lob);
+        chartFromMap("chart-tiers", data.confidence_tiers);
+        renderLobBudget(data.lob_budget);
+        renderRecords(data.records);
+      } catch (err) {
+        document.getElementById("error-banner").style.display = "block";
+        document.getElementById("error-banner").textContent = `Failed to load stats: ${err.message}`;
+        document.getElementById("status-badge").className = "badge error";
+        document.getElementById("status-badge").textContent = "Offline";
+      }
+    }
+
+    function scheduleRefresh() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      if (document.getElementById("auto-refresh").checked) {
+        refreshTimer = setInterval(refresh, 5000);
+      }
+    }
+
+    document.getElementById("auto-refresh").addEventListener("change", scheduleRefresh);
+    refresh();
+    scheduleRefresh();
+  </script>
+</body>
+</html>

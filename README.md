@@ -2,7 +2,17 @@
 
 Lead intelligence pipeline: ingest licensed contractor data, detect digital presence, resolve mailing addresses, verify via USPS (Lob), and export mail-ready prospect segments.
 
-**Status:** Scaffold only — pipeline code not yet implemented. See [AGENTS.md](AGENTS.md) to start building.
+**Status:** Pipeline implemented. Phases 0–8 runnable via `main.py`.
+
+## LLM comparison (run this first)
+
+Before the full pilot, compare MiniMax M2.7 vs DeepSeek on 20 records:
+
+```powershell
+python compare_llm.py
+```
+
+Reports land in `runs/{run_id}/llm_comparison/`. Set `LLM_PROVIDER=minimax` in `.env.local` for production runs.
 
 ## Quick start
 

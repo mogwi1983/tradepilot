@@ -10,7 +10,8 @@ Shared libraries used by all phases. **Phases must not import from each other.**
 | `csv_io.py` | Yes | Safe CSV read/write, column ownership, resumability |
 | `logger.py` | Yes | Structured logs → console + `runs/{run_id}/run.log` |
 | `browser.py` | Before Phase 1 | browser-use wrapper: search, fetch page, retries |
-| `deepseek.py` | Before Phase 1 | LLM: match scoring, address extraction, classification |
+| `deepseek.py` | Before Phase 1 | **Deprecated** — use `llm.py` |
+| `llm.py` | Before Phase 1 | LLM: MiniMax M2.7 (default) or DeepSeek |
 | `lob.py` | Before Phase 5 | Lob verify + `lob_budget.json` read/update |
 
 ## Interface contracts (summary)
@@ -19,7 +20,8 @@ Full signatures in `CURSOR-BOOTSTRAP.md` Step 2.
 
 - `csv_io.update_record(df, license_number, updates)` — enforces column ownership; skips non-blank unless `force=True`
 - `browser.search(query) → list[SearchResult]`
-- `deepseek.score_match(candidate, target, context) → int` (0–100)
+- `llm.score_match(candidate, target, context) → int` (0–100)
+- `compare_llm.py` — run MiniMax vs DeepSeek on first 20 records before full pilot
 - `lob.verify_address(address) → LobResult` — raises `LobBudgetExhaustedError` at 0 remaining
 
 ## Agent notes
