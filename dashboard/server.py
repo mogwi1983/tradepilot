@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.config import load_run_config
+from dashboard.runner import get_job_status, reset_job_if_idle, start_batch
 from dashboard.stats import compute_dashboard_stats
 
 
@@ -43,24 +44,59 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         self.send_error(404, "Not found")
 
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+
+        if path == "/api/run-batch":
+            self._run_batch()
+            return
+        if path == "/api/reset-job":
+            reset_job_if_idle()
+            self._json_response(200, {"ok": True})
+            return
+
+        self.send_error(404, "Not found")
+
+    def _read_json_body(self) -> dict:
+        length = int(self.headers.get("Content-Length", 0))
+        if length <= 0:
+            return {}
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            return {}
+
+    def _json_response(self, code: int, payload: dict) -> None:
+        body = json.dumps(payload, indent=2).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _serve_stats(self) -> None:
         try:
             config = load_run_config(self.config_path)
-            payload = compute_dashboard_stats(config)
-            body = json.dumps(payload, indent=2).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            job = get_job_status()
+            payload = compute_dashboard_stats(config, job=job)
+            self._json_response(200, payload)
         except Exception as exc:
-            body = json.dumps({"error": str(exc)}).encode("utf-8")
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._json_response(500, {"error": str(exc)})
+
+    def _run_batch(self) -> None:
+        try:
+            body = self._read_json_body()
+            batch_size = body.get("batch_size")
+            if batch_size is not None:
+                batch_size = int(batch_size)
+            ok, message = start_batch(self.config_path, batch_size=batch_size)
+            code = 200 if ok else 409
+            self._json_response(code, {"ok": ok, "message": message, "job": get_job_status()})
+        except Exception as exc:
+            self._json_response(500, {"ok": False, "error": str(exc)})
 
     def _serve_file(self, path: Path, content_type: str) -> None:
         body = path.read_bytes()

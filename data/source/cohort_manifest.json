@@ -1,0 +1,30 @@
+{
+  "campaign": "initial_600_mailers",
+  "description": "Three cohorts x 200 Lob-verified mailing addresses = 600 first-wave mailers",
+  "cohorts": {
+    "cohort_1": {
+      "label": "No Facebook / No Website",
+      "rules": "website_y/n = N AND fb_y/n = N",
+      "mail_target": 200,
+      "overflow_wave": "wave_2"
+    },
+    "cohort_2": {
+      "label": "Facebook only / No Website",
+      "rules": "website_y/n = N AND fb_y/n = Y",
+      "mail_target": 200,
+      "overflow_wave": "wave_2"
+    },
+    "cohort_3": {
+      "label": "Has Website",
+      "rules": "website_y/n = Y (Facebook any)",
+      "mail_target": 200,
+      "overflow_wave": "wave_2"
+    }
+  },
+  "waves": {
+    "wave_1": "First 200 mail-ready (lob_ready=true) per cohort — initial mailer",
+    "wave_2": "Overflow beyond 200 mail-ready in same cohort — second mailer batch",
+    "pending": "Cohort assigned but not yet mail-ready (no deliverable address)",
+    "ineligible": "Excluded or unresolved — not mailable"
+  }
+}

@@ -35,6 +35,8 @@ class RunConfig:
     phases_to_run: list[int]
     start_phase: int
     resume_from_record: str | None
+    cohort_mail_targets: dict[str, int] | None = None
+    batch_size: int = 100
 
     @property
     def project_root(self) -> Path:
@@ -90,6 +92,8 @@ def load_run_config(path: str | Path = "run_config.json") -> RunConfig:
         phases_to_run=[int(p) for p in data["phases_to_run"]],
         start_phase=int(data["start_phase"]),
         resume_from_record=data.get("resume_from_record"),
+        cohort_mail_targets=data.get("cohort_mail_targets"),
+        batch_size=int(data.get("batch_size", 100)),
     )
 
     if not cfg.input_path.exists():

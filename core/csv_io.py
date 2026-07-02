@@ -78,6 +78,8 @@ PHASE_COLUMNS: dict[int, list[str]] = {
         "lob_verification_timestamp",
     ],
     7: [
+        "cohort",
+        "mail_wave",
         "batch_assignment",
         "lob_ready",
         "exclusion_reason",

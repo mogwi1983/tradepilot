@@ -79,6 +79,86 @@
 
     .badge.live { background: rgba(34, 197, 94, 0.2); color: var(--success); }
     .badge.error { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+    .badge.running { background: rgba(59, 130, 246, 0.2); color: var(--accent); }
+
+    .batch-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .batch-panel .info {
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .batch-panel h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .batch-panel .progress-text {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .batch-panel .sub-text {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .batch-panel .bar-track {
+      height: 10px;
+      margin-top: 0.65rem;
+      max-width: 420px;
+    }
+
+    .batch-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.5rem;
+    }
+
+    .run-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1.25rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-width: 180px;
+    }
+
+    .run-btn:hover:not(:disabled) {
+      background: #2563eb;
+    }
+
+    .run-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .job-message {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: right;
+      max-width: 320px;
+    }
 
     main {
       padding: 1.5rem 2rem 3rem;
@@ -343,6 +423,21 @@
   <main>
     <div id="error-banner" class="error-banner" style="display:none"></div>
 
+    <section class="batch-panel" id="batch-panel">
+      <div class="info">
+        <h2>Cumulative batch progress</h2>
+        <div class="progress-text" id="batch-progress-text">Loading…</div>
+        <div class="sub-text" id="batch-sub-text"></div>
+        <div class="bar-track">
+          <div class="bar-fill" id="batch-bar" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="batch-actions">
+        <button class="run-btn" id="run-batch-btn" disabled>Run Next 100</button>
+        <div class="job-message" id="job-message"></div>
+      </div>
+    </section>
+
     <section class="kpis" id="kpis"></section>
 
     <section class="grid-2">
@@ -370,8 +465,8 @@
         <div class="chart-wrap"><canvas id="chart-address"></canvas></div>
       </div>
       <div class="card">
-        <h2>Batch assignment</h2>
-        <div class="chart-wrap"><canvas id="chart-batch"></canvas></div>
+        <h2>Cohort assignment</h2>
+        <div class="chart-wrap"><canvas id="chart-cohorts"></canvas></div>
       </div>
     </section>
 
@@ -406,7 +501,8 @@
               <th>FB</th>
               <th>Address</th>
               <th>Lob</th>
-              <th>Batch</th>
+              <th>Cohort</th>
+              <th>Wave</th>
               <th>Ready</th>
             </tr>
           </thead>
@@ -424,8 +520,13 @@
       pending: "#64748b",
       batch_1: "#3b82f6",
       batch_2: "#8b5cf6",
-      excluded: "#f59e0b",
-      unresolved: "#64748b",
+      cohort_1: "#3b82f6",
+      cohort_2: "#8b5cf6",
+      cohort_3: "#06b6d4",
+      wave_1: "#22c55e",
+      wave_2: "#a855f7",
+      pending: "#64748b",
+      ineligible: "#94a3b8",
       deliverable: "#22c55e",
       undeliverable: "#ef4444",
       not_called: "#64748b",
@@ -439,6 +540,7 @@
     let allRecords = [];
     let activeFilter = "all";
     let refreshTimer = null;
+    let jobRunning = false;
 
     function doughnutOptions() {
       return {
@@ -469,13 +571,82 @@
       });
     }
 
+    function renderBatchPanel(data) {
+      const bp = data.batch_progress || {};
+      const job = data.job || {};
+      const total = bp.total_in_output ?? data.total_records ?? 0;
+      const max = bp.max_records || total || 1;
+      const remaining = bp.remaining_eligible ?? 0;
+      const batchSize = bp.batch_size ?? 100;
+      const nextCount = bp.next_batch_count ?? batchSize;
+      const pct = max > 0 ? Math.min(100, (total / max) * 100) : 0;
+
+      document.getElementById("batch-progress-text").textContent =
+        `${total} record${total === 1 ? "" : "s"} processed`;
+      document.getElementById("batch-sub-text").textContent =
+        `${remaining} eligible remaining in source · ${batchSize} per batch · cap ${max}`;
+      document.getElementById("batch-bar").style.width = `${pct}%`;
+      document.getElementById("batch-bar").classList.toggle("done", pct >= 100);
+
+      const btn = document.getElementById("run-batch-btn");
+      const isRunning = job.state === "running";
+      jobRunning = isRunning;
+
+      if (isRunning) {
+        btn.disabled = true;
+        btn.textContent = "Running…";
+      } else if (bp.can_run_more) {
+        btn.disabled = false;
+        btn.textContent = `Run Next ${nextCount}`;
+      } else if (bp.at_cap) {
+        btn.disabled = true;
+        btn.textContent = "At cap";
+      } else {
+        btn.disabled = true;
+        btn.textContent = "No more records";
+      }
+
+      const jobEl = document.getElementById("job-message");
+      if (isRunning) {
+        jobEl.textContent = job.message || "Pipeline running…";
+      } else if (job.state === "completed" || job.state === "failed") {
+        jobEl.textContent = job.message || "";
+      } else {
+        jobEl.textContent = "";
+      }
+    }
+
+    async function runNextBatch() {
+      const btn = document.getElementById("run-batch-btn");
+      btn.disabled = true;
+      btn.textContent = "Starting…";
+      try {
+        const res = await fetch("/api/run-batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const data = await res.json();
+        if (!data.ok) {
+          document.getElementById("error-banner").style.display = "block";
+          document.getElementById("error-banner").textContent = data.message || data.error || "Could not start batch";
+        } else {
+          document.getElementById("error-banner").style.display = "none";
+        }
+        await refresh();
+        scheduleRefresh();
+      } catch (err) {
+        document.getElementById("error-banner").style.display = "block";
+        document.getElementById("error-banner").textContent = `Failed to start batch: ${err.message}`;
+      }
+    }
+
+    document.getElementById("run-batch-btn").addEventListener("click", runNextBatch);
+
     function renderKpis(data) {
       const kpis = [
         { label: "Total records", value: data.total_records, sub: data.run_id },
         { label: "Mail ready", value: data.funnel?.[3]?.count ?? 0, sub: `${data.success_rate ?? 0}% success rate` },
         { label: "Address found", value: data.funnel?.[1]?.count ?? 0, sub: `${data.address_rate ?? 0}% of list` },
-        { label: "Batch 1", value: data.batch?.batch_1 ?? 0, sub: `${data.batch?.batch_2 ?? 0} batch 2` },
-        { label: "Excluded", value: data.batch?.excluded ?? 0, sub: `${data.batch?.unresolved ?? 0} unresolved` },
+        { label: "Wave 1 mail", value: data.waves?.wave_1 ?? 0, sub: `${data.waves?.wave_2 ?? 0} wave 2 overflow` },
+        { label: "Cohort 1", value: data.cohorts?.cohort_1 ?? 0, sub: "no FB / no site" },
+        { label: "Cohort 3", value: data.cohorts?.cohort_3 ?? 0, sub: `${data.cohorts?.cohort_2 ?? 0} FB only` },
       ];
       document.getElementById("kpis").innerHTML = kpis.map(k => `
         <div class="kpi">
@@ -574,7 +745,8 @@
           <td>${r["fb_y/n"] || "—"}</td>
           <td>${r.address_found || "—"}</td>
           <td>${r.lob_deliverability || "—"}</td>
-          <td>${r.batch_assignment || "—"}</td>
+          <td>${r.cohort || "—"}</td>
+          <td>${r.mail_wave || "—"}</td>
           <td>${r.lob_ready || "—"}</td>
         </tr>
       `).join("");
@@ -596,12 +768,24 @@
         }
 
         banner.style.display = "none";
-        badge.className = "badge live";
-        badge.textContent = "Live";
+
+        const job = data.job || {};
+        if (job.state === "running") {
+          badge.className = "badge running";
+          badge.textContent = "Running";
+        } else if (job.state === "failed") {
+          badge.className = "badge error";
+          badge.textContent = "Failed";
+        } else {
+          badge.className = "badge live";
+          badge.textContent = "Live";
+        }
 
         const updated = new Date(data.generated_at).toLocaleString();
         document.getElementById("run-meta").textContent =
-          `Run: ${data.run_id} · ${data.total_records} records · ${data.output_file} · Updated ${updated}`;
+          `Run: ${data.run_id} · ${data.total_records} records in dashboard · Updated ${updated}`;
+
+        renderBatchPanel(data);
 
         renderKpis(data);
         renderPhases(data.phases);
@@ -609,11 +793,12 @@
         chartFromMap("chart-website", data.website);
         chartFromMap("chart-facebook", data.facebook);
         chartFromMap("chart-address", data.address);
-        chartFromMap("chart-batch", data.batch);
+        chartFromMap("chart-cohorts", data.cohorts || {});
         chartFromMap("chart-lob", data.lob);
         chartFromMap("chart-tiers", data.confidence_tiers);
         renderLobBudget(data.lob_budget);
         renderRecords(data.records);
+        scheduleRefresh();
       } catch (err) {
         document.getElementById("error-banner").style.display = "block";
         document.getElementById("error-banner").textContent = `Failed to load stats: ${err.message}`;
@@ -625,7 +810,8 @@
     function scheduleRefresh() {
       if (refreshTimer) clearInterval(refreshTimer);
       if (document.getElementById("auto-refresh").checked) {
-        refreshTimer = setInterval(refresh, 5000);
+        const interval = jobRunning ? 2000 : 5000;
+        refreshTimer = setInterval(refresh, interval);
       }
     }
 

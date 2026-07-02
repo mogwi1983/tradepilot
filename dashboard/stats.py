@@ -9,6 +9,7 @@ from typing import Any
 
 import pandas as pd
 
+from core.batch import batch_meta
 from core.config import RunConfig
 from core.utils import is_blank
 
@@ -82,7 +83,7 @@ def _load_lob_budget(path: Path) -> dict[str, Any]:
         return json.load(f)
 
 
-def _record_summaries(df: pd.DataFrame, limit: int = 50) -> list[dict[str, Any]]:
+def _record_summaries(df: pd.DataFrame, limit: int | None = None) -> list[dict[str, Any]]:
     cols = [
         "license_number",
         "county",
@@ -92,6 +93,8 @@ def _record_summaries(df: pd.DataFrame, limit: int = 50) -> list[dict[str, Any]]
         "fb_y/n",
         "address_found",
         "lob_deliverability",
+        "cohort",
+        "mail_wave",
         "batch_assignment",
         "lob_ready",
         "confidence_tier",
@@ -107,33 +110,79 @@ def _record_summaries(df: pd.DataFrame, limit: int = 50) -> list[dict[str, Any]]
 
     priority = {"failed": 0, "warning": 1, "success": 2, "pending": 3}
     rows.sort(key=lambda r: (priority.get(r["status"], 9), r.get("license_number", "")))
-    return rows[:limit]
+    if limit is not None:
+        return rows[:limit]
+    return rows
 
 
 def _record_status(row: pd.Series) -> str:
-    if str(row.get("lob_ready", "")).lower() == "true":
+    if str(row.get("mail_wave", "")) == "wave_1" and str(row.get("lob_ready", "")).lower() == "true":
         return "success"
-    if str(row.get("batch_assignment", "")) in ("batch_1", "batch_2"):
+    if str(row.get("cohort", "")) in ("cohort_1", "cohort_2", "cohort_3") and str(
+        row.get("lob_ready", "")
+    ).lower() == "true":
         return "success"
-    if str(row.get("batch_assignment", "")) == "excluded":
+    if str(row.get("cohort", "")) == "excluded":
         return "warning"
     if str(row.get("lob_deliverability", "")) == "undeliverable":
         return "failed"
-    if str(row.get("address_found", "")).upper() == "N" and not is_blank(row.get("phase4_timestamp", row.get("address_attempt_log"))):
+    if str(row.get("address_found", "")).upper() == "N" and not is_blank(
+        row.get("phase4_timestamp", row.get("address_attempt_log"))
+    ):
         return "failed"
-    if not is_blank(row.get("batch_assignment")):
+    if not is_blank(row.get("cohort")):
         return "warning"
     if not is_blank(row.get("website_y/n")) or not is_blank(row.get("fb_y/n")):
         return "pending"
     return "pending"
 
 
-def compute_dashboard_stats(config: RunConfig) -> dict[str, Any]:
+def compute_dashboard_stats(config: RunConfig, *, job: dict[str, Any] | None = None) -> dict[str, Any]:
+    meta = batch_meta(config)
     output_path = config.output_path
+
     if not output_path.exists():
         return {
-            "error": f"Output file not found: {output_path}",
+            "run_id": config.run_id,
+            "output_file": str(output_path),
+            "total_records": 0,
             "generated_at": datetime.now(timezone.utc).isoformat(),
+            "success_rate": 0,
+            "address_rate": 0,
+            "phases": [],
+            "website": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
+            "facebook": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
+            "address": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
+            "lob": {"deliverable": 0, "undeliverable": 0, "not_called": 0, "other": 0},
+            "batch": {"batch_1": 0, "batch_2": 0, "pending": 0, "excluded": 0, "unresolved": 0},
+            "cohorts": {
+                "cohort_1": 0,
+                "cohort_2": 0,
+                "cohort_3": 0,
+                "excluded": 0,
+                "unresolved": 0,
+                "pending": 0,
+            },
+            "waves": {"wave_1": 0, "wave_2": 0, "pending": 0, "ineligible": 0},
+            "confidence_tiers": {"A": 0, "B": 0, "C": 0, "pending": 0},
+            "funnel": [
+                {"stage": "Total records", "count": 0},
+                {"stage": "Address found", "count": 0},
+                {"stage": "Lob deliverable", "count": 0},
+                {"stage": "Mail ready", "count": 0},
+                {"stage": "Wave 1 (initial mail)", "count": 0},
+            ],
+            "counties": {},
+            "lob_budget": _load_lob_budget(config.lob_budget_path),
+            "records": [],
+            "batch_progress": meta,
+            "job": job or {"state": "idle"},
+            "artifacts": {
+                "qa_report_exists": False,
+                "qa_report_path": str(config.run_log_dir / f"qa_report_{config.run_id}.md"),
+                "run_log_exists": False,
+                "run_log_path": str(config.run_log_dir / "run.log"),
+            },
         }
 
     df = pd.read_csv(output_path)
@@ -178,9 +227,27 @@ def compute_dashboard_stats(config: RunConfig) -> dict[str, Any]:
     batch = {
         "batch_1": batch_raw.get("batch_1", 0),
         "batch_2": batch_raw.get("batch_2", 0),
+        "pending": batch_raw.get("pending", 0),
         "excluded": batch_raw.get("excluded", 0),
         "unresolved": batch_raw.get("unresolved", 0),
-        "pending": batch_raw.get("pending", 0),
+    }
+
+    cohort_raw = _value_counts(df, "cohort") if "cohort" in df.columns else {}
+    cohorts = {
+        "cohort_1": cohort_raw.get("cohort_1", 0),
+        "cohort_2": cohort_raw.get("cohort_2", 0),
+        "cohort_3": cohort_raw.get("cohort_3", 0),
+        "excluded": cohort_raw.get("excluded", 0),
+        "unresolved": cohort_raw.get("unresolved", 0),
+        "pending": cohort_raw.get("pending", 0),
+    }
+
+    wave_raw = _value_counts(df, "mail_wave") if "mail_wave" in df.columns else {}
+    waves = {
+        "wave_1": wave_raw.get("wave_1", 0),
+        "wave_2": wave_raw.get("wave_2", 0),
+        "pending": wave_raw.get("pending", 0),
+        "ineligible": wave_raw.get("ineligible", 0),
     }
 
     tiers_raw = _value_counts(df, "confidence_tier")
@@ -200,7 +267,7 @@ def compute_dashboard_stats(config: RunConfig) -> dict[str, Any]:
         {"stage": "Address found", "count": address_found_y},
         {"stage": "Lob deliverable", "count": deliverable},
         {"stage": "Mail ready", "count": mail_ready},
-        {"stage": "Batch 1 assigned", "count": batch.get("batch_1", 0)},
+        {"stage": "Wave 1 (initial mail)", "count": waves.get("wave_1", 0)},
     ]
 
     counties: dict[str, int] = {}
@@ -228,11 +295,15 @@ def compute_dashboard_stats(config: RunConfig) -> dict[str, Any]:
         "address": address,
         "lob": lob,
         "batch": batch,
+        "cohorts": cohorts,
+        "waves": waves,
         "confidence_tiers": tiers,
         "funnel": funnel,
         "counties": counties,
         "lob_budget": _load_lob_budget(config.lob_budget_path),
         "records": _record_summaries(df),
+        "batch_progress": meta,
+        "job": job or {"state": "idle"},
         "artifacts": {
             "qa_report_exists": qa_report.exists(),
             "qa_report_path": str(qa_report),

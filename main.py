@@ -42,6 +42,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--start-phase", type=int, default=None, help="Resume from phase N")
     parser.add_argument("--phases", type=int, nargs="+", default=None, help="Run only these phases")
     parser.add_argument("--record", type=str, default=None, help="Process single license_number (testing)")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Admit and process at most N new records this run (default: run_config batch_size)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -54,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
         config.start_phase = args.start_phase
     if args.record:
         config.resume_from_record = args.record
+    if args.batch_size is not None:
+        config.batch_size = args.batch_size
 
     phases = args.phases if args.phases else config.phases_to_run
     phases = [p for p in phases if p >= config.start_phase]

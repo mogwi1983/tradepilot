@@ -1,68 +1,51 @@
-"""Phase 0 — Universe Filter."""
+"""Phase 0 — Universe Filter (incremental batches)."""
 
 from __future__ import annotations
 
 import pandas as pd
 
+from core.batch import eligible_candidates, slots_available
 from core.config import RunConfig
-from core.csv_io import ensure_columns, update_record, write_csv
+from core.csv_io import ensure_columns, read_csv, update_record, write_csv
 from core.logger import RunLogger
-from core.utils import is_blank, normalize_county, now_iso
+from core.utils import is_blank, now_iso
 
 
 def run(df: pd.DataFrame | None, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
     logger.set_phase("phase0")
-    from core.csv_io import read_csv
 
+    input_df = read_csv(config.input_path)
     if config.output_path.exists():
-        df = read_csv(config.output_path)
-        logger.info(f"Resuming from existing output ({len(df)} rows)")
+        out_df = read_csv(config.output_path)
+        logger.info(f"Resuming from existing output ({len(out_df)} rows)")
     else:
-        df = read_csv(config.input_path)
-        logger.info(f"Loaded input ({len(df)} rows)")
+        out_df = pd.DataFrame()
+        logger.info(f"Starting fresh from input ({len(input_df)} rows)")
 
-    df = ensure_columns(df, ["run_id", "batch1_excluded", "phase0_timestamp"])
+    slots = slots_available(config, current_output_count=len(out_df))
+    candidates = eligible_candidates(config)
 
-    target_counties = {normalize_county(c) for c in config.target_counties}
-    subtypes = {s.upper() for s in config.license_subtypes}
-    priority = {normalize_county(c): i for i, c in enumerate(config.county_priority)}
-
-    filtered_rows = []
-    for _, row in df.iterrows():
-        if not is_blank(row.get("phase0_timestamp")):
-            filtered_rows.append(row)
-            continue
-
-        county = normalize_county(row.get("county", ""))
-        subtype = str(row.get("license_subtype", "")).upper().strip()
-
-        if county not in target_counties:
-            continue
-        if subtype and subtype not in subtypes:
-            continue
-        if "license_status" in row.index:
-            status = str(row.get("license_status", "")).upper()
-            if status and status != "ACTIVE":
-                continue
-
-        filtered_rows.append(row)
-
-    if not filtered_rows:
-        out = df.iloc[0:0].copy()
+    if slots > 0 and not candidates.empty:
+        new_rows = candidates.head(slots).copy()
+        if out_df.empty:
+            out_df = new_rows.reset_index(drop=True)
+        else:
+            out_df = ensure_columns(out_df, list(new_rows.columns))
+            new_rows = ensure_columns(new_rows, list(out_df.columns))
+            out_df = pd.concat([out_df, new_rows], ignore_index=True)
+        logger.info(f"Admitted {len(new_rows)} new record(s) this batch")
+    elif slots <= 0:
+        logger.info("max_records cap reached — no new records admitted")
     else:
-        out = pd.DataFrame(filtered_rows)
-        out["_county_rank"] = out["county"].map(lambda c: priority.get(normalize_county(c), 999))
-        out = out.sort_values("_county_rank").drop(columns="_county_rank")
-        if config.max_records > 0:
-            out = out.head(config.max_records)
+        logger.info("No new eligible candidates in input")
 
-    out = out.reset_index(drop=True)
+    out_df = ensure_columns(out_df, ["run_id", "batch1_excluded", "phase0_timestamp"])
     ts = now_iso()
-    for i in range(len(out)):
-        lic = str(out.at[i, "license_number"])
-        if is_blank(out.at[i, "phase0_timestamp"]):
-            out = update_record(
-                out,
+    for i in range(len(out_df)):
+        lic = str(out_df.at[i, "license_number"])
+        if is_blank(out_df.at[i, "phase0_timestamp"]):
+            out_df = update_record(
+                out_df,
                 lic,
                 {
                     "run_id": config.run_id,
@@ -73,6 +56,6 @@ def run(df: pd.DataFrame | None, config: RunConfig, logger: RunLogger) -> pd.Dat
             )
             logger.info("Phase 0 processed", license_number=lic)
 
-    write_csv(out, config.output_path)
-    logger.info(f"Phase 0 complete: {len(out)} records in working file")
-    return out
+    write_csv(out_df, config.output_path)
+    logger.info(f"Phase 0 complete: {len(out_df)} records in working file")
+    return out_df
