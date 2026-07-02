@@ -29,6 +29,7 @@ runs/*/
 # Data outputs (source CSVs in data/source/ are committed; phase outputs are not)
 data/output/*.csv
 data/output/*.md
+!data/output/README.md
 !data/output/.gitkeep
 
 # Temp / atomic write artifacts
