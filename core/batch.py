@@ -6,7 +6,7 @@ import pandas as pd
 
 from core.config import RunConfig
 from core.csv_io import read_csv
-from core.utils import is_blank, normalize_county
+from core.utils import normalize_county
 
 
 def row_eligible(
@@ -14,11 +14,12 @@ def row_eligible(
     *,
     target_counties: set[str],
     subtypes: set[str],
+    skip_county_validation: bool = False,
 ) -> bool:
     county = normalize_county(row.get("county", ""))
     subtype = str(row.get("license_subtype", "")).upper().strip()
 
-    if county not in target_counties:
+    if not skip_county_validation and county not in target_counties:
         return False
     if subtype and subtype not in subtypes:
         return False
@@ -45,6 +46,113 @@ def admitted_license_numbers(config: RunConfig) -> set[str]:
     return set(df["license_number"].astype(str).str.strip())
 
 
+def _with_county_rank(df: pd.DataFrame, priority: dict[str, int]) -> pd.DataFrame:
+    out = df.copy()
+    out["_county_rank"] = out["county"].map(lambda c: priority.get(normalize_county(c), 999))
+    return out.sort_values("_county_rank")
+
+
+def _subtype_quotas(
+    candidates: pd.DataFrame,
+    subtypes: list[str],
+    n: int,
+) -> dict[str, int]:
+    """Allocate n slots across license subtypes proportional to the candidate pool."""
+    if candidates.empty or n <= 0:
+        return {}
+
+    pool = candidates.copy()
+    pool["_subtype"] = pool["license_subtype"].astype(str).str.upper().str.strip()
+    ordered_subtypes = [s.upper() for s in subtypes]
+    counts = {st: int((pool["_subtype"] == st).sum()) for st in ordered_subtypes if (pool["_subtype"] == st).any()}
+    if not counts:
+        return {}
+
+    total = sum(counts.values())
+    raw = {st: n * counts[st] / total for st in counts}
+    quotas = {st: int(raw[st]) for st in counts}
+    remainder = n - sum(quotas.values())
+    for st in sorted(counts, key=lambda s: raw[s] - quotas[s], reverse=True):
+        if remainder <= 0:
+            break
+        quotas[st] += 1
+        remainder -= 1
+
+    # Cap by availability; redistribute any shortfall to strata with spare rows.
+    shortfall = 0
+    for st in ordered_subtypes:
+        if st not in quotas:
+            continue
+        if quotas[st] > counts[st]:
+            shortfall += quotas[st] - counts[st]
+            quotas[st] = counts[st]
+
+    if shortfall > 0:
+        spare = [
+            st
+            for st in ordered_subtypes
+            if st in quotas and quotas[st] < counts[st]
+        ]
+        idx = 0
+        while shortfall > 0 and spare:
+            st = spare[idx % len(spare)]
+            if quotas[st] < counts[st]:
+                quotas[st] += 1
+                shortfall -= 1
+            idx += 1
+            if idx > len(spare) * (n + 1):
+                break
+
+    return quotas
+
+
+def stratified_select(
+    candidates: pd.DataFrame,
+    n: int,
+    *,
+    subtypes: list[str],
+    priority: dict[str, int],
+) -> pd.DataFrame:
+    """Pick up to n rows with proportional license_subtype representation."""
+    if candidates.empty or n <= 0:
+        return pd.DataFrame()
+
+    ranked = _with_county_rank(candidates, priority)
+    ranked["_subtype"] = ranked["license_subtype"].astype(str).str.upper().str.strip()
+    quotas = _subtype_quotas(ranked, subtypes, n)
+
+    picked: list[pd.DataFrame] = []
+    for st, quota in quotas.items():
+        if quota <= 0:
+            continue
+        stratum = ranked[ranked["_subtype"] == st].head(quota)
+        picked.append(stratum)
+
+    if not picked:
+        return pd.DataFrame()
+
+    out = pd.concat(picked, ignore_index=True).head(n)
+    return out.drop(columns=["_county_rank", "_subtype"], errors="ignore")
+
+
+def select_batch(candidates: pd.DataFrame, slots: int, config: RunConfig) -> pd.DataFrame:
+    """Select the next batch from eligible candidates."""
+    if candidates.empty or slots <= 0:
+        return pd.DataFrame()
+
+    _, _, priority = filter_settings(config)
+    if config.stratify_by_license_subtype:
+        return stratified_select(
+            candidates,
+            slots,
+            subtypes=config.license_subtypes,
+            priority=priority,
+        )
+
+    ranked = _with_county_rank(candidates, priority)
+    return ranked.head(slots).drop(columns=["_county_rank"], errors="ignore")
+
+
 def eligible_candidates(config: RunConfig) -> pd.DataFrame:
     """Input rows matching filters that are not yet in the working output file."""
     target_counties, subtypes, priority = filter_settings(config)
@@ -56,7 +164,12 @@ def eligible_candidates(config: RunConfig) -> pd.DataFrame:
         lic = str(row["license_number"]).strip()
         if lic in admitted:
             continue
-        if not row_eligible(row, target_counties=target_counties, subtypes=subtypes):
+        if not row_eligible(
+            row,
+            target_counties=target_counties,
+            subtypes=subtypes,
+            skip_county_validation=config.skip_county_validation,
+        ):
             continue
         rows.append(row)
 
@@ -64,8 +177,7 @@ def eligible_candidates(config: RunConfig) -> pd.DataFrame:
         return pd.DataFrame()
 
     out = pd.DataFrame(rows)
-    out["_county_rank"] = out["county"].map(lambda c: priority.get(normalize_county(c), 999))
-    return out.sort_values("_county_rank").drop(columns="_county_rank")
+    return _with_county_rank(out, priority).drop(columns="_county_rank")
 
 
 def slots_available(config: RunConfig, *, current_output_count: int | None = None) -> int:
