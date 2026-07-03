@@ -33,6 +33,7 @@ data/output/*.md
 !data/output/.gitkeep
 data/search_cache.sqlite
 data/dashboard_job.json
+data/pipeline_state.json
 
 # Temp / atomic write artifacts
 *.tmp

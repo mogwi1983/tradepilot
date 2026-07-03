@@ -9,6 +9,7 @@ from core.config import RunConfig
 from core.csv_io import ensure_columns, phase_complete, update_record, write_csv
 from core.llm import get_llm_client
 from core.logger import RunLogger
+from core.tuning import format_query_templates, load_tuning, phase_tuning
 from core.utils import display_name, fuzzy_prefilter, is_blank, now_iso
 
 
@@ -44,6 +45,10 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
 
     browser = BrowserSession(logger)
     llm = get_llm_client(logger)
+    tuning = load_tuning(config.pipeline_tuning_path)
+    p2 = phase_tuning(tuning, "phase2")
+    min_y = int(p2.get("fb_min_confidence", 85))
+    min_uncertain = max(50, min_y - 25)
 
     try:
         for _, row in df.iterrows():
@@ -59,7 +64,9 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
             best_conf = 0
             name = display_name(row)
 
-            for q in _search_bundle(row):
+            for q in _search_bundle(row) + format_query_templates(
+                p2.get("extra_search_queries", []), row
+            ):
                 q = " ".join(str(q).split())
                 if len(q) < 4:
                     continue
@@ -88,7 +95,7 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                         best_url = r.url
                         best_name = r.title
 
-            if best_conf >= 85 and best_url:
+            if best_conf >= min_y and best_url:
                 try:
                     page = browser.fetch_page(best_url)
                     yn, conf = llm.classify_fb_page(page.text, name)
@@ -97,7 +104,7 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                 except Exception as exc:
                     yn, conf = "UNCERTAIN", best_conf
                     notes.append(f"fetch_error={exc}")
-            elif 60 <= best_conf < 85:
+            elif min_uncertain <= best_conf < min_y:
                 yn, conf = "UNCERTAIN", best_conf
             else:
                 yn, conf = "N", best_conf

@@ -19,9 +19,9 @@ def row_eligible(
     county = normalize_county(row.get("county", ""))
     subtype = str(row.get("license_subtype", "")).upper().strip()
 
-    if not skip_county_validation and county not in target_counties:
+    if not skip_county_validation and target_counties and county not in target_counties:
         return False
-    if subtype and subtype not in subtypes:
+    if subtypes and subtype and subtype not in subtypes:
         return False
     if "license_status" in row.index:
         status = str(row.get("license_status", "")).upper()
@@ -189,6 +189,37 @@ def slots_available(config: RunConfig, *, current_output_count: int | None = Non
     return batch_size
 
 
+def universe_meta(config: RunConfig) -> dict:
+    """Counts across the full source list (not just the current working batch)."""
+    input_df = read_csv(config.input_path)
+    if config.sequential_no_filters:
+        eligible = len(input_df)
+        admitted = len(admitted_license_numbers(config))
+        return {
+            "total_in_source": len(input_df),
+            "total_eligible": eligible,
+            "admitted_to_output": admitted,
+            "not_yet_admitted": max(0, eligible - admitted),
+        }
+    target_counties, subtypes, _ = filter_settings(config)
+    eligible = 0
+    for _, row in input_df.iterrows():
+        if row_eligible(
+            row,
+            target_counties=target_counties,
+            subtypes=subtypes,
+            skip_county_validation=config.skip_county_validation,
+        ):
+            eligible += 1
+    admitted = len(admitted_license_numbers(config))
+    return {
+        "total_in_source": len(input_df),
+        "total_eligible": eligible,
+        "admitted_to_output": admitted,
+        "not_yet_admitted": max(0, eligible - admitted),
+    }
+
+
 def batch_meta(config: RunConfig) -> dict:
     output_count = len(admitted_license_numbers(config))
     candidates = eligible_candidates(config)
@@ -197,6 +228,7 @@ def batch_meta(config: RunConfig) -> dict:
     batch_size = config.batch_size if config.batch_size > 0 else 100
 
     next_batch_count = min(slots, remaining_eligible) if slots > 0 else 0
+    universe = universe_meta(config)
 
     return {
         "batch_size": batch_size,
@@ -206,4 +238,7 @@ def batch_meta(config: RunConfig) -> dict:
         "next_batch_count": next_batch_count,
         "can_run_more": next_batch_count > 0,
         "at_cap": config.max_records > 0 and output_count >= config.max_records,
+        "universe_total_eligible": universe["total_eligible"],
+        "universe_not_yet_admitted": universe["not_yet_admitted"],
+        "universe_admitted": universe["admitted_to_output"],
     }

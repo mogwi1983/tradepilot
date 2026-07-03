@@ -110,6 +110,95 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
+    .card-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: -0.5rem 0 0.85rem;
+      line-height: 1.4;
+    }
+
+    .campaign-hero {
+      background: linear-gradient(135deg, var(--surface) 0%, #1e2a3d 100%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .campaign-hero h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+      color: var(--text);
+      text-transform: none;
+      letter-spacing: -0.02em;
+    }
+    .campaign-hero .desc { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; }
+    .campaign-total-bar {
+      height: 14px;
+      background: var(--surface2);
+      border-radius: 7px;
+      overflow: hidden;
+      margin: 0.5rem 0;
+    }
+    .campaign-total-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, var(--success));
+      border-radius: 7px;
+      transition: width 0.5s ease;
+    }
+    .campaign-stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      font-size: 0.9rem;
+      margin-top: 0.75rem;
+    }
+    .campaign-stats-row strong { font-size: 1.25rem; display: block; }
+
+    .cohort-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .cohort-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.15rem 1.25rem;
+    }
+    .cohort-card.met { border-color: rgba(34, 197, 94, 0.45); }
+    .cohort-card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .cohort-card .rules {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      line-height: 1.35;
+    }
+    .cohort-metric {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      margin-bottom: 0.35rem;
+    }
+    .cohort-metric .val { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .cohort-bar { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; margin-top: 0.5rem; }
+    .cohort-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #60a5fa); border-radius: 4px; }
+    .cohort-bar-fill.met { background: linear-gradient(90deg, var(--success), #4ade80); }
+
+    details.phase-details summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
 
     .phase-list { display: flex; flex-direction: column; gap: 0.65rem; }
     .phase-row {
@@ -282,7 +371,7 @@
 
   <header class="header">
     <div>
-      <h1>TradePilot Pipeline Dashboard</h1>
+      <h1>600 Mailer Campaign</h1>
       <div class="meta" id="run-meta">Loading…</div>
     </div>
     <div class="controls">
@@ -298,37 +387,55 @@
 
     <section class="kpis" id="kpis"></section>
 
+    <section class="campaign-hero" id="campaign-hero"></section>
+
+    <section class="cohort-grid" id="cohort-grid"></section>
+
+    <section class="card" style="margin-bottom: 1.5rem;">
+      <h2>Process next batch</h2>
+      <p class="card-hint">Sequential top-to-bottom through Supabase (~1,924 rows). Each run processes <strong>100 contractors</strong> through phases 1–4 + 7 (no Lob). Auto-continues while address rate ≥ <span id="gate-pct-label">30</span>%; below that, DeepSeek applies one tuning change then moves to the next batch.</p>
+      <div class="batch-bar" id="batch-bar">
+        <select id="batch-phase">
+          <option value="1">Phase 1 (Website)</option>
+          <option value="2">Phase 2 (Facebook)</option>
+          <option value="4">Phase 4 (Address)</option>
+          <option value="7">Phase 7 (Classify)</option>
+        </select>
+        <button class="btn btn-success" id="btn-run-batch">▶ Run Phase on Batch</button>
+        <button class="btn" id="btn-pull-process" title="Pull next 100 from Supabase in list order; runs phases 1–4, 7; auto-continues when gate passes">⬇ Start Sequential Run</button>
+        <input id="batch-size-input" type="number" value="100" min="10" max="500" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.5rem;border-radius:6px;font-size:0.8rem;width:70px" title="Batch size" />
+        <span id="batch-status" style="color:var(--muted);font-size:0.8rem"></span>
+      </div>
+      <textarea id="batch-output" class="result-textarea" style="display:none" readonly></textarea>
+    </section>
+
     <section class="grid-2">
       <div class="card">
-        <h2>Phase progress</h2>
-        <div class="phase-list" id="phase-list"></div>
-        <!-- Batch runner -->
-        <div class="batch-bar" id="batch-bar">
-          <span>Run batch:</span>
-          <select id="batch-phase">
-            <option value="1">Phase 1 (Website)</option>
-            <option value="2">Phase 2 (Facebook)</option>
-            <option value="4">Phase 4 (Address)</option>
-            <option value="5">Phase 5 (Lob)</option>
-            <option value="7">Phase 7 (Classify)</option>
-          </select>
-          <button class="btn btn-success" id="btn-run-batch">▶ Run Next 100</button>
-          <button class="btn" id="btn-pull-process" title="Pull unprocessed contractors from Supabase and run phases 1–5, 7">⬇ Pull &amp; Process 50</button>
-          <span id="batch-status" style="color:var(--muted);font-size:0.8rem"></span>
-        </div>
-        <textarea id="batch-output" class="result-textarea" style="display:none" readonly></textarea>
+        <h2>Campaign funnel</h2>
+        <div class="funnel" id="funnel"></div>
       </div>
       <div class="card">
-        <h2>Mail-ready funnel</h2>
-        <div class="funnel" id="funnel"></div>
+        <h2>Batch gate &amp; history</h2>
+        <div id="pipeline-state" style="font-size:0.85rem;color:var(--muted)"></div>
+        <details class="phase-details" style="margin-top:1rem">
+          <summary>Phase progress (current batch)</summary>
+          <div class="phase-list" id="phase-list"></div>
+        </details>
       </div>
     </section>
 
     <section class="grid-2">
       <div class="card">
+        <h2>Lob budget</h2>
+        <div class="lob-budget" id="lob-budget"></div>
+      </div>
+      <div class="card">
         <h2>Website detection</h2>
         <div class="chart-wrap"><canvas id="chart-website"></canvas></div>
       </div>
+    </section>
+
+    <section class="grid-2">
       <div class="card">
         <h2>Facebook detection</h2>
         <div class="chart-wrap"><canvas id="chart-facebook"></canvas></div>
@@ -337,13 +444,13 @@
         <h2>Address resolution</h2>
         <div class="chart-wrap"><canvas id="chart-address"></canvas></div>
       </div>
-      <div class="card">
-        <h2>Batch assignment</h2>
-        <div class="chart-wrap"><canvas id="chart-batch"></canvas></div>
-      </div>
     </section>
 
     <section class="grid-2">
+      <div class="card">
+        <h2>Cohort assignment</h2>
+        <div class="chart-wrap"><canvas id="chart-batch"></canvas></div>
+      </div>
       <div class="card">
         <h2>Lob deliverability</h2>
         <div class="chart-wrap"><canvas id="chart-lob"></canvas></div>
@@ -354,31 +461,27 @@
       </div>
     </section>
 
-    <section class="card" style="margin-bottom: 1.5rem;">
-      <h2>Lob budget</h2>
-      <div class="lob-budget" id="lob-budget"></div>
-    </section>
-
     <section class="card">
-      <h2>Records</h2>
+      <h2>Current batch records</h2>
       <!-- Export buttons -->
       <div class="export-bar" id="export-bar">
         <button class="btn btn-sm btn-success" data-export="full">📥 Full Export</button>
         <button class="btn btn-sm" data-export="cohort_1">📥 Cohort 1</button>
         <button class="btn btn-sm" data-export="cohort_2">📥 Cohort 2</button>
+        <button class="btn btn-sm" data-export="cohort_3">📥 Cohort 3</button>
         <button class="btn btn-sm" data-export="lob-ready">📥 Lob-Ready</button>
       </div>
       <!-- Filters -->
       <div class="filter-row" id="filters">
         <select id="cohort-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.5rem;border-radius:6px;font-size:0.8rem">
           <option value="">All cohorts</option>
-          <option value="batch_1">Cohort 1</option>
-          <option value="batch_2">Cohort 2</option>
+          <option value="cohort_1">Cohort 1 — No site / No FB</option>
+          <option value="cohort_2">Cohort 2 — FB only</option>
+          <option value="cohort_3">Cohort 3 — Has website</option>
           <option value="excluded">Excluded</option>
           <option value="unresolved">Unresolved</option>
         </select>
         <input id="text-search" type="text" placeholder="Search name/license/county…" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.5rem;border-radius:6px;font-size:0.8rem;flex:1;min-width:160px" />
-        <input id="batch-size-input" type="number" value="100" min="10" max="500" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.5rem;border-radius:6px;font-size:0.8rem;width:70px" title="Batch size" />
         <span class="result-counter" id="result-counter"></span>
       </div>
       <div class="table-wrap">
@@ -393,7 +496,7 @@
               <th>FB</th>
               <th>Address</th>
               <th>Lob</th>
-              <th>Batch</th>
+              <th>Wave</th>
               <th>Cohort</th>
               <th>Ready</th>
             </tr>
@@ -506,12 +609,15 @@
 
     // ── Renderers ────────────────────────────────────────────────────────
     function renderKpis(data) {
+      const c = data.campaign || {};
+      const ps = data.pipeline_state || {};
+      const gate = data.address_gate_pct ?? 30;
       const kpis = [
-        { label: "Total records", value: data.total_records, sub: data.run_id },
-        { label: "Mail ready", value: data.funnel?.[3]?.count ?? 0, sub: `${data.success_rate ?? 0}% success rate` },
-        { label: "Address found", value: data.funnel?.[1]?.count ?? 0, sub: `${data.address_rate ?? 0}% of list` },
-        { label: "Batch 1", value: data.batch?.batch_1 ?? 0, sub: `${data.batch?.batch_2 ?? 0} batch 2` },
-        { label: "Excluded", value: data.batch?.excluded ?? 0, sub: `${data.batch?.unresolved ?? 0} unresolved` },
+        { label: "Addresses found", value: c.addresses_found_total ?? 0, sub: `of ${c.total_goal_addresses ?? 600} goal (${c.pct_complete ?? 0}%)` },
+        { label: "Last batch rate", value: ps.last_address_rate_pct != null ? `${ps.last_address_rate_pct}%` : "—", sub: `${ps.last_batch_addresses_found ?? 0}/${ps.last_batch_size ?? 100} · gate ${gate}%` },
+        { label: "Batches done", value: ps.batches_completed ?? 0, sub: `${c.universe?.remaining_to_process ?? "?"} left in queue` },
+        { label: "Cohort 1 addrs", value: c.cohorts?.[0]?.addresses_found ?? 0, sub: `C2 ${c.cohorts?.[1]?.addresses_found ?? 0} · C3 ${c.cohorts?.[2]?.addresses_found ?? 0}` },
+        { label: "Tuning changes", value: ps.tuning_applied_count ?? 0, sub: "DeepSeek adjustments" },
       ];
       document.getElementById("kpis").innerHTML = kpis.map(k => `
         <div class="kpi">
@@ -522,31 +628,91 @@
       `).join("");
     }
 
+    function renderCampaignHero(campaign, gatePct) {
+      const c = campaign || {};
+      const pct = Math.min(100, c.pct_complete ?? 0);
+      const srcLabel = { supabase: "Supabase (full universe)", csv_batch: "Working CSV (current batch only)", none: "—" };
+      const gateEl = document.getElementById("gate-pct-label");
+      if (gateEl) gateEl.textContent = gatePct ?? 30;
+      document.getElementById("campaign-hero").innerHTML = `
+        <h2>Goal: ${c.total_goal_addresses ?? 600} mailing addresses (3 × 200)</h2>
+        <div class="desc">${c.description || "No site/FB · FB only · Has website"} · ${srcLabel[c.source] || c.source}</div>
+        <div class="campaign-total-bar">
+          <div class="campaign-total-fill" style="width:${pct}%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:var(--muted)">
+          <span><strong style="color:var(--text);font-size:1.1rem">${c.addresses_found_total ?? 0}</strong> / ${c.total_goal_addresses ?? 600} addresses found</span>
+          <span>${c.still_needed_total ?? 0} still needed</span>
+        </div>
+        <div class="campaign-stats-row">
+          <span><strong>${c.universe?.processed_through_pipeline ?? 0}</strong> / ${c.universe?.total_eligible ?? "?"} classified</span>
+          <span><strong>${c.universe?.remaining_to_process ?? "?"}</strong> remaining</span>
+          <span>Gate: <strong>${gatePct ?? 30}%</strong> address rate to auto-continue</span>
+        </div>
+      `;
+    }
+
+    function renderPipelineState(state, tuning) {
+      const ps = state || {};
+      const history = (ps.batch_history || []).slice(-5).reverse();
+      const rows = history.map(h => `
+        <div class="cohort-metric">
+          <span>Batch ${h.batch_number}</span>
+          <span class="val">${h.addresses_found}/${h.batch_size} (${h.address_rate_pct}%)${h.tuning_applied ? " · tuned" : ""}</span>
+        </div>
+      `).join("");
+      const tuningRows = (tuning || []).map(t => `<div style="margin-top:0.35rem">· ${t.rationale || t.field}</div>`).join("");
+      document.getElementById("pipeline-state").innerHTML = `
+        <div class="cohort-metric"><span>Last batch</span><span class="val">${ps.last_address_rate_pct != null ? ps.last_address_rate_pct + "%" : "—"}</span></div>
+        <div class="cohort-metric"><span>Total processed</span><span class="val">${ps.total_processed ?? 0}</span></div>
+        ${rows || "<div>No batches completed yet.</div>"}
+        ${tuningRows ? `<div style="margin-top:0.75rem"><strong>Recent tuning</strong>${tuningRows}</div>` : ""}
+      `;
+    }
+
+    function renderCohortCards(campaign) {
+      const cohorts = (campaign && campaign.cohorts) || [];
+      document.getElementById("cohort-grid").innerHTML = cohorts.map((co, i) => `
+        <div class="cohort-card ${co.target_met ? "met" : ""}">
+          <h3>Cohort ${i + 1}: ${co.label}</h3>
+          <div class="rules">${co.rules}</div>
+          <div class="cohort-metric"><span>Addresses found</span><span class="val">${co.addresses_found} / ${co.target}</span></div>
+          <div class="cohort-metric"><span>Classified</span><span class="val">${co.assigned}</span></div>
+          <div class="cohort-metric"><span>Still needed</span><span class="val">${co.still_needed}</span></div>
+          <div class="cohort-bar">
+            <div class="cohort-bar-fill ${co.target_met ? "met" : ""}" style="width:${Math.min(100, co.pct_of_target)}%"></div>
+          </div>
+        </div>
+      `).join("");
+    }
+
     function renderPhases(phases) {
       document.getElementById("phase-list").innerHTML = (phases || []).map(p => `
         <div class="phase-row">
           <span class="num">${p.id}</span>
           <div>
-            <div style="margin-bottom:0.2rem">${p.name}</div>
+            <div style="margin-bottom:0.2rem">${p.name} <span style="color:var(--muted);font-size:0.75rem">(${p.column})</span></div>
             <div class="bar-track">
               <div class="bar-fill ${p.pct >= 100 ? "done" : ""}" style="width:${p.pct}%"></div>
             </div>
           </div>
-          <span class="phase-pct">${p.processed}/${p.total}</span>
+          <span class="phase-pct" title="Rows with this field filled">${p.processed}/${p.total}</span>
         </div>
       `).join("");
     }
 
     function renderFunnel(funnel, total) {
-      const max = total || 1;
+      const max = Math.max(...(funnel || []).map(s => s.goal || s.count || 0), total || 1, 1);
       document.getElementById("funnel").innerHTML = (funnel || []).map(step => {
-        const pct = Math.max(4, (step.count / max) * 100);
+        const goal = step.goal || max;
+        const pct = Math.max(4, (step.count / goal) * 100);
+        const goalLabel = step.goal ? ` / ${step.goal}` : "";
         return `
           <div class="funnel-step">
             <span class="funnel-label">${step.stage}</span>
             <div class="funnel-bar-wrap">
               <div class="funnel-bar" style="width:${pct}%">
-                <span class="funnel-count">${step.count}</span>
+                <span class="funnel-count">${step.count}${goalLabel}</span>
               </div>
             </div>
           </div>
@@ -564,8 +730,30 @@
       `;
     }
 
+    function staleServerMessage(res) {
+      if (res.status !== 501) return null;
+      return "Dashboard server is out of date (POST not supported). Stop all dashboard processes on port 8765 and run: npm run dashboard";
+    }
+
+    function showStaleServerBanner() {
+      const banner = document.getElementById("error-banner");
+      banner.style.display = "block";
+      banner.textContent = staleServerMessage({ status: 501 });
+    }
+
+    async function ensureServerReady() {
+      try {
+        const res = await apiFetch(apiUrl("api/health"));
+        if (!res.ok) return false;
+        const data = await res.json();
+        return data.supports_post === true;
+      } catch {
+        return false;
+      }
+    }
+
     function statusLabel(status) {
-      const map = { success: "Ready", warning: "Review", failed: "Failed", pending: "Pending" };
+      const map = { success: "Address ✓", warning: "Review", failed: "Failed", pending: "In progress" };
       return map[status] || status;
     }
 
@@ -576,7 +764,7 @@
 
       let filtered = allRecords;
       if (cohortFilter) {
-        filtered = filtered.filter(r => (r.batch_assignment || "").toLowerCase() === cohortFilter.toLowerCase());
+        filtered = filtered.filter(r => (r.cohort || r.batch_assignment || "").toLowerCase() === cohortFilter.toLowerCase());
       }
       if (searchText) {
         filtered = filtered.filter(r =>
@@ -609,8 +797,8 @@
           <td>${r["fb_y/n"] || "—"}</td>
           <td>${r.address_found || "—"}</td>
           <td>${r.lob_deliverability || "—"}</td>
-          <td>${r.batch_assignment || "—"}</td>
-          <td>${r.cohort || r.batch_assignment || "—"}</td>
+          <td>${r.mail_wave || "—"}</td>
+          <td>${r.cohort || "—"}</td>
           <td>${r.lob_ready || "—"}</td>
         </tr>
       `).join("");
@@ -620,19 +808,14 @@
     }
 
     function updateBatchButton(records) {
-      const processed = records.filter(r => r.status !== "pending").length;
-      const total = records.length;
-      const remaining = total - processed;
+      const wave1 = records.filter(r => r.status === "success").length;
+      const inProgress = records.filter(r => r.status === "pending").length;
       const btn = document.getElementById("btn-run-batch");
-      if (remaining <= 0) {
-        btn.textContent = "✅ All processed";
-        btn.disabled = true;
-      } else {
-        const batchSize = parseInt(document.getElementById("batch-size-input").value) || 100;
-        const n = Math.min(batchSize, remaining);
-        btn.textContent = `▶ Run Next ${n} (${remaining} remaining)`;
-        btn.disabled = false;
-      }
+      const batchSize = parseInt(document.getElementById("batch-size-input").value) || 100;
+      btn.textContent = inProgress > 0
+        ? `▶ Run Phase (${inProgress} in progress)`
+        : `▶ Run Phase on Batch (${records.length || batchSize})`;
+      btn.disabled = records.length === 0 && !jobRunning;
     }
 
     // ── Export buttons ───────────────────────────────────────────────────
@@ -677,6 +860,14 @@
             method: "POST",
             body: JSON.stringify({ phase, batch_size: parseInt(batchSize) }),
           });
+          if (!res.ok) {
+            const stale = staleServerMessage(res);
+            if (stale) {
+              showStaleServerBanner();
+              status.textContent = "❌ " + stale;
+              return;
+            }
+          }
           const data = await res.json();
           if (data.exit_code === 0) {
             status.textContent = "✅ Phase " + phase + " complete";
@@ -712,6 +903,14 @@
             method: "POST",
             body: JSON.stringify({ limit }),
           });
+          if (!res.ok) {
+            const stale = staleServerMessage(res);
+            if (stale) {
+              showStaleServerBanner();
+              status.textContent = "❌ " + stale;
+              return;
+            }
+          }
           const data = await res.json();
           if (!data.ok) {
             status.textContent = "❌ " + (data.message || data.error || "Could not start");
@@ -742,7 +941,7 @@
       runBtn.disabled = jobRunning;
       pullBtn.textContent = jobRunning
         ? "⏳ Processing…"
-        : `⬇ Pull & Process ${Math.min(500, Math.max(1, limit))}`;
+        : `⬇ Start Sequential Run (${Math.min(500, Math.max(1, limit))})`;
 
       if (jobRunning) {
         badge.className = "badge running";
@@ -763,7 +962,8 @@
     function setupFilters() {
       document.getElementById("cohort-filter").onchange = () => renderRecords(allRecords);
       document.getElementById("text-search").oninput = () => renderRecords(allRecords);
-      document.getElementById("batch-size-input").onchange = () => renderRecords(allRecords);
+      const batchSizeInput = document.getElementById("batch-size-input");
+      if (batchSizeInput) batchSizeInput.onchange = () => updateJobUi({ state: "idle" });
 
       // Status filter buttons
       document.querySelectorAll(".filter-btn").forEach(btn => {
@@ -777,7 +977,7 @@
       const filtersDiv = document.getElementById("filters");
       // Insert status filter buttons after the input row but before the result counter
       const statuses = ["all", "success", "warning", "failed", "pending"];
-      const labels = { all: "All", success: "Ready", warning: "Review", failed: "Failed", pending: "Pending" };
+      const labels = { all: "All", success: "Address ✓", warning: "Review", failed: "Failed", pending: "In progress" };
       statuses.forEach(f => {
         const btn = document.createElement("button");
         btn.className = "filter-btn" + (f === "all" ? " active" : "");
@@ -804,7 +1004,9 @@
         const banner = document.getElementById("error-banner");
         const badge = document.getElementById("status-badge");
 
-        if (data.error) {
+        if (!data.server?.supports_post) {
+          showStaleServerBanner();
+        } else if (data.error) {
           banner.style.display = "block";
           banner.textContent = data.error;
           badge.className = "badge error";
@@ -816,10 +1018,14 @@
         updateJobUi(data.job);
 
         const updated = new Date(data.generated_at).toLocaleString();
+        const u = data.universe || {};
         document.getElementById("run-meta").textContent =
-          `Run: ${data.run_id} · ${data.total_records} records · ${data.output_file} · Updated ${updated}`;
+          `Run: ${data.run_id} · ${u.total_eligible ?? "?"} eligible contractors · batch ${data.total_records} in file · ${updated}`;
 
         renderKpis(data);
+        renderCampaignHero(data.campaign, data.address_gate_pct);
+        renderCohortCards(data.campaign);
+        renderPipelineState(data.pipeline_state, data.tuning_revision);
         renderPhases(data.phases);
         renderFunnel(data.funnel, data.total_records);
         chartFromMap("chart-website", data.website);
@@ -853,7 +1059,11 @@
     setupBatchRunner();
     setupPullProcess();
     setupFilters();
-    checkAuth().then(ok => { if (ok) refresh(); });
+    checkAuth().then(async ok => {
+      if (!ok) return;
+      if (!(await ensureServerReady())) showStaleServerBanner();
+      refresh();
+    });
     scheduleRefresh();
   </script>
 </body>

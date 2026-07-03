@@ -104,11 +104,11 @@ def db_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
     return df.fillna("")
 
 
-def fetch_unprocessed_contractors(
-    limit: int = 50,
+def fetch_next_batch_sequential(
+    limit: int = 100,
     table: str = "contractors",
 ) -> list[dict[str, Any]]:
-    """Pull contractors from Supabase that have not completed classification."""
+    """Next unprocessed contractors in CSV seed order (top to bottom)."""
     cfg = _get_supabase_config()
     if not cfg:
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
@@ -121,8 +121,7 @@ def fetch_unprocessed_contractors(
     params = {
         "select": "*",
         "phase7_timestamp": "is.null",
-        "or": "(batch1_excluded.is.null,batch1_excluded.eq.false)",
-        "order": "license_number.asc",
+        "order": "seed_row_order.asc.nullslast,license_number.asc",
         "limit": str(limit),
     }
 
@@ -134,6 +133,78 @@ def fetch_unprocessed_contractors(
     if not isinstance(data, list):
         raise RuntimeError(f"Unexpected Supabase response: {data!r}")
     return data
+
+
+def fetch_unprocessed_contractors(
+    limit: int = 50,
+    table: str = "contractors",
+) -> list[dict[str, Any]]:
+    """Backward-compatible alias — sequential order, no county/subtype filter."""
+    return fetch_next_batch_sequential(limit=limit, table=table)
+
+
+def fetch_contractors_for_campaign(
+    table: str = "contractors",
+    *,
+    page_size: int = 1000,
+) -> list[dict[str, Any]]:
+    """Paginated fetch of summary columns for campaign dashboard stats."""
+    cfg = _get_supabase_config()
+    if not cfg:
+        return []
+
+    url = f"{cfg['url']}/rest/v1/{table}"
+    headers = {
+        "apikey": cfg["key"],
+        "Authorization": f"Bearer {cfg['key']}",
+    }
+    columns = (
+        "license_number,cohort,mail_wave,lob_ready,lob_deliverability,"
+        "phase7_timestamp,website_yn,fb_yn,address_found,address_raw,"
+        "address_is_pobox,batch1_excluded,seed_row_order"
+    )
+    rows: list[dict[str, Any]] = []
+    offset = 0
+
+    while True:
+        params = {
+            "select": columns,
+            "order": "license_number.asc",
+            "limit": str(page_size),
+            "offset": str(offset),
+        }
+        resp = requests.get(url, headers=headers, params=params, timeout=60)
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Supabase campaign fetch failed: HTTP {resp.status_code} — {resp.text[:300]}"
+            )
+        batch = resp.json()
+        if not isinstance(batch, list) or not batch:
+            break
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    return rows
+
+
+def fetch_campaign_view(table: str = "campaign_cohort_summary") -> list[dict[str, Any]] | None:
+    """Try the SQL view first; return None if not deployed."""
+    cfg = _get_supabase_config()
+    if not cfg:
+        return None
+
+    url = f"{cfg['url']}/rest/v1/{table}"
+    headers = {
+        "apikey": cfg["key"],
+        "Authorization": f"Bearer {cfg['key']}",
+    }
+    resp = requests.get(url, headers=headers, timeout=30)
+    if resp.status_code != 200:
+        return None
+    data = resp.json()
+    return data if isinstance(data, list) else None
 
 
 def _prepare_df_for_upsert(df: pd.DataFrame) -> pd.DataFrame:

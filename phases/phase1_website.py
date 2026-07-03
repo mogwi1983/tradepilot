@@ -9,6 +9,7 @@ from core.config import RunConfig
 from core.csv_io import ensure_columns, phase_complete, update_record, write_csv
 from core.llm import get_llm_client
 from core.logger import RunLogger
+from core.tuning import format_query_templates, load_tuning, phase_tuning
 from core.utils import display_name, fuzzy_prefilter, is_blank, is_probable_website, now_iso
 
 
@@ -39,6 +40,10 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
     browser = BrowserSession(logger)
     llm = get_llm_client(logger)
     target = display_name
+    tuning = load_tuning(config.pipeline_tuning_path)
+    p1 = phase_tuning(tuning, "phase1")
+    min_y = int(p1.get("website_min_confidence", 85))
+    min_uncertain = max(50, min_y - 25)
 
     try:
         for idx, row in df.iterrows():
@@ -53,7 +58,9 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
             best_conf = 0
             name = target(row)
 
-            for q in _search_bundle(row):
+            for q in _search_bundle(row) + format_query_templates(
+                p1.get("extra_search_queries", []), row
+            ):
                 q = " ".join(str(q).split())
                 if len(q) < 4:
                     continue
@@ -82,9 +89,9 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                         best_conf = conf
                         best_url = r.url
 
-            if best_conf >= 85:
+            if best_conf >= min_y:
                 yn, url, conf = "Y", best_url, best_conf
-            elif best_conf >= 60:
+            elif best_conf >= min_uncertain:
                 yn, url, conf = "UNCERTAIN", best_url, best_conf
             else:
                 yn, url, conf = "N", "", best_conf

@@ -8,6 +8,7 @@ import io
 import json
 import mimetypes
 import os
+import socket
 import subprocess
 import sys
 import traceback
@@ -15,6 +16,8 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+
+API_VERSION = 2
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -79,6 +82,24 @@ def authenticate(headers: dict) -> bool:
     if not TOKEN:
         return True  # no token configured = open access
     return headers.get("x-dashboard-token", "") == TOKEN
+
+
+def _port_available(host: str, port: int) -> bool:
+    """Return True when host:port can be bound exclusively."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+class DashboardHTTPServer(ThreadingHTTPServer):
+    """Single-instance server — do not allow address reuse."""
+
+    allow_reuse_address = False
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -150,8 +171,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if ready_only and "lob_ready" in df.columns:
             df = df[df["lob_ready"].astype(str).str.lower() == "true"]
-        if cohort and "batch_assignment" in df.columns:
-            df = df[df["batch_assignment"].astype(str).str.strip() == cohort]
+        if cohort:
+            if "cohort" in df.columns:
+                df = df[df["cohort"].astype(str).str.strip() == cohort]
+            elif "batch_assignment" in df.columns:
+                df = df[df["batch_assignment"].astype(str).str.strip() == cohort]
 
         buf = io.StringIO()
         df.to_csv(buf, index=False)
@@ -184,10 +208,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         # ── stats ────────────────────────────────────────────────────
-        if method == "GET" and path == "/api/stats":
+        if method == "GET" and path == "/api/health":
+            self._json_response(200, {
+                "ok": True,
+                "api_version": API_VERSION,
+                "supports_post": True,
+                "endpoints": ["GET /api/stats", "GET /api/export", "POST /api/run-batch", "POST /api/pull-process"],
+            })
+
+        elif method == "GET" and path == "/api/stats":
             try:
                 payload = compute_dashboard_stats(config)
                 payload["job"] = _dashboard_job()
+                payload["server"] = {
+                    "api_version": API_VERSION,
+                    "supports_post": True,
+                }
                 self._json_response(200, payload)
             except Exception as exc:
                 self._json_response(500, {"error": str(exc),
@@ -341,8 +377,22 @@ def main() -> None:
 
     DashboardHandler.config_path = config_path
 
-    server = ThreadingHTTPServer((args.host, args.port),
-                                 DashboardHandler)
+    if not _port_available(args.host, args.port):
+        print(
+            f"ERROR: Port {args.port} is already in use on {args.host}.\n"
+            "Another dashboard (or stale process) is still running.\n"
+            "Stop it first, then restart:\n"
+            f"  Get-NetTCPConnection -LocalPort {args.port} | "
+            "Select-Object -ExpandProperty OwningProcess -Unique | "
+            "ForEach-Object {{ Stop-Process -Id $_ -Force }}\n"
+            "  npm run dashboard",
+            flush=True,
+        )
+        raise SystemExit(1)
+
+    server = DashboardHTTPServer((args.host, args.port), DashboardHandler)
+    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+        server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
     display_host = "localhost" if args.host in ("127.0.0.1", "0.0.0.0", "") else args.host
     url = f"http://{display_host}:{args.port}/"
     print(f"TradePilot dashboard: {url}", flush=True)

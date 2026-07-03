@@ -9,6 +9,7 @@ from core.config import RunConfig
 from core.csv_io import ensure_columns, phase_complete, update_record, write_csv
 from core.llm import get_llm_client
 from core.logger import RunLogger
+from core.tuning import format_query_templates, load_tuning, phase_tuning
 from core.utils import display_name, is_blank, is_pobox, now_iso
 
 
@@ -74,6 +75,12 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
     browser = BrowserSession(logger)
     llm = get_llm_client(logger)
     name_fn = display_name
+    tuning = load_tuning(config.pipeline_tuning_path)
+    p4 = phase_tuning(tuning, "phase4")
+    disabled = {str(s).lower() for s in p4.get("disabled_sources", [])}
+    accept_conf = int(p4.get("address_accept_confidence", 75))
+    gmaps_match = int(p4.get("gmaps_min_match_confidence", 85))
+    gsearch_match = int(p4.get("gsearch_min_match_confidence", 75))
 
     try:
         for _, row in df.iterrows():
@@ -88,7 +95,11 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
             name = name_fn(row)
 
             # Source 1 — website
-            if str(row.get("website_y/n", "")).upper() == "Y" and row.get("website_url"):
+            if (
+                "website" not in disabled
+                and str(row.get("website_y/n", "")).upper() == "Y"
+                and row.get("website_url")
+            ):
                 url = str(row["website_url"])
                 try:
                     page = browser.fetch_page(url)
@@ -108,7 +119,12 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                     log.append(f"website|error={exc}")
 
             # Source 2 — Facebook
-            if not candidates and str(row.get("fb_y/n", "")).upper() == "Y" and row.get("fb_url"):
+            if (
+                "facebook" not in disabled
+                and not candidates
+                and str(row.get("fb_y/n", "")).upper() == "Y"
+                and row.get("fb_url")
+            ):
                 url = str(row["fb_url"])
                 try:
                     page = browser.fetch_page(url)
@@ -121,8 +137,10 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                     log.append(f"facebook|error={exc}")
 
             # Source 3 — Google Maps / GBP via search
-            if not candidates:
-                for q in _gmaps_queries(row):
+            if "gmaps" not in disabled and not candidates:
+                for q in _gmaps_queries(row) + format_query_templates(
+                    p4.get("extra_gmaps_queries", []), row
+                ):
                     q = " ".join(str(q).split())
                     try:
                         for r in browser.search(f"{q} maps"):
@@ -133,7 +151,7 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                             extracted = llm.extract_address(ctx, name)
                             cand = _candidate_from_extracted(extracted, "gmaps", r.url)
                             log.append(f"gmaps|query={q}|conf={conf}|found={bool(cand)}")
-                            if cand and conf >= 85:
+                            if cand and conf >= gmaps_match:
                                 cand["address_confidence_%"] = str(max(int(cand["address_confidence_%"]), conf))
                                 candidates.append(cand)
                                 break
@@ -143,8 +161,10 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                         log.append(f"gmaps|query={q}|error={exc}")
 
             # Source 4 — Google search
-            if not candidates:
-                for q in _gsearch_queries(row):
+            if "gsearch" not in disabled and not candidates:
+                for q in _gsearch_queries(row) + format_query_templates(
+                    p4.get("extra_gsearch_queries", []), row
+                ):
                     q = " ".join(str(q).split())
                     try:
                         for r in browser.search(q):
@@ -152,7 +172,7 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                             extracted = llm.extract_address(f"{r.title}\n{r.snippet}", name)
                             cand = _candidate_from_extracted(extracted, "gsearch", r.url)
                             log.append(f"gsearch|query={q}|conf={conf}|found={bool(cand)}")
-                            if cand and conf >= 75:
+                            if cand and conf >= gsearch_match:
                                 cand["address_confidence_%"] = str(max(int(cand["address_confidence_%"]), conf))
                                 candidates.append(cand)
                                 break
@@ -165,7 +185,7 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
             if not candidates:
                 # 5a — OpenCorporates (aggregates TX SOS registered-agent data)
                 biz = str(row.get("business_name_raw", "")).strip()
-                if biz:
+                if biz and "opencorporates" not in disabled:
                     oc_q = f"opencorporates.com {biz} Texas"
                     try:
                         for r in browser.search(oc_q):
@@ -181,7 +201,7 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                         log.append(f"opencorporates|error={exc}")
 
                 # 5b — County appraisal district search
-                if not candidates:
+                if not candidates and "county_cad" not in disabled:
                     county = str(row.get("county", "")).strip().lower()
                     owner = str(row.get("owner_name_raw", "")).strip()
                     cad_urls = {
@@ -217,7 +237,7 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                 best = max(candidates, key=lambda c: int(c["address_confidence_%"]))
                 unique_addrs = {c["address_raw"].strip().lower() for c in candidates}
                 conflict = len(unique_addrs) > 1
-                found = "Y" if int(best["address_confidence_%"]) >= 75 else "UNCERTAIN"
+                found = "Y" if int(best["address_confidence_%"]) >= accept_conf else "UNCERTAIN"
                 updates = {
                     "address_found": found,
                     "address_raw": best["address_raw"],

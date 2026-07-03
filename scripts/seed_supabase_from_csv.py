@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CSV = ROOT / "data" / "source" / "batch1_search_log_results.csv"
 MIGRATION = ROOT / "supabase" / "migrations" / "001_create_contractors.sql"
+MIGRATION_003 = ROOT / "supabase" / "migrations" / "003_sequential_pipeline.sql"
 
 # CSV column name -> contractors table column name
 CSV_TO_DB: dict[str, str] = {
@@ -57,7 +58,7 @@ CSV_TO_DB: dict[str, str] = {
     "mail_wave": "mail_wave",
 }
 
-DB_COLUMNS = list(dict.fromkeys(CSV_TO_DB.values()))
+DB_COLUMNS = list(dict.fromkeys(CSV_TO_DB.values())) + ["seed_row_order"]
 
 
 def _blank(value) -> bool:
@@ -91,7 +92,7 @@ INT_COLUMNS = {
 }
 
 
-def row_to_db_tuple(row: pd.Series) -> tuple:
+def row_to_db_tuple(row: pd.Series, row_index: int) -> tuple:
     values: dict[str, object] = {}
     for csv_col, db_col in CSV_TO_DB.items():
         raw = row.get(csv_col, "")
@@ -99,6 +100,7 @@ def row_to_db_tuple(row: pd.Series) -> tuple:
             values[db_col] = _to_int(raw)
         else:
             values[db_col] = _to_text(raw)
+    values["seed_row_order"] = row_index
     return tuple(values[col] for col in DB_COLUMNS)
 
 
@@ -119,14 +121,16 @@ def get_database_url() -> str:
 
 
 def run_migration(conn) -> None:
-    sql = MIGRATION.read_text(encoding="utf-8")
-    with conn.cursor() as cur:
-        cur.execute(sql)
+    for path in (MIGRATION, MIGRATION_003):
+        if path.exists():
+            sql = path.read_text(encoding="utf-8")
+            with conn.cursor() as cur:
+                cur.execute(sql)
     conn.commit()
 
 
 def seed(conn, df: pd.DataFrame, *, truncate: bool) -> int:
-    rows = [row_to_db_tuple(df.iloc[i]) for i in range(len(df))]
+    rows = [row_to_db_tuple(df.iloc[i], i) for i in range(len(df))]
     cols_sql = ", ".join(DB_COLUMNS)
     update_cols = [c for c in DB_COLUMNS if c != "license_number"]
     update_sql = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)

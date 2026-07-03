@@ -36,9 +36,16 @@ class RunConfig:
     start_phase: int
     resume_from_record: str | None
     cohort_mail_targets: dict[str, int] | None = None
+    cohort_manifest_file: str = "data/source/cohort_manifest.json"
     batch_size: int = 100
     skip_county_validation: bool = False
     stratify_by_license_subtype: bool = True
+    address_gate_pct: float = 30.0
+    auto_continue_batches: bool = True
+    db_process_phases: list[int] | None = None
+    pipeline_tuning_file: str = "data/pipeline_tuning.json"
+    pipeline_state_file: str = "data/pipeline_state.json"
+    sequential_no_filters: bool = True
 
     @property
     def project_root(self) -> Path:
@@ -59,6 +66,18 @@ class RunConfig:
     @property
     def lob_budget_path(self) -> Path:
         return self.resolve(self.lob_budget_file)
+
+    @property
+    def cohort_manifest_path(self) -> Path:
+        return self.resolve(self.cohort_manifest_file)
+
+    @property
+    def pipeline_tuning_path(self) -> Path:
+        return self.resolve(self.pipeline_tuning_file)
+
+    @property
+    def pipeline_state_path(self) -> Path:
+        return self.resolve(self.pipeline_state_file)
 
     @property
     def run_log_dir(self) -> Path:
@@ -95,9 +114,16 @@ def load_run_config(path: str | Path = "run_config.json") -> RunConfig:
         start_phase=int(data["start_phase"]),
         resume_from_record=data.get("resume_from_record"),
         cohort_mail_targets=data.get("cohort_mail_targets"),
+        cohort_manifest_file=str(data.get("cohort_manifest_file", "data/source/cohort_manifest.json")),
         batch_size=int(data.get("batch_size", 100)),
         skip_county_validation=bool(data.get("skip_county_validation", False)),
         stratify_by_license_subtype=bool(data.get("stratify_by_license_subtype", True)),
+        address_gate_pct=float(data.get("address_gate_pct", 30)),
+        auto_continue_batches=bool(data.get("auto_continue_batches", True)),
+        db_process_phases=[int(p) for p in data["db_process_phases"]] if data.get("db_process_phases") else None,
+        pipeline_tuning_file=str(data.get("pipeline_tuning_file", "data/pipeline_tuning.json")),
+        pipeline_state_file=str(data.get("pipeline_state_file", "data/pipeline_state.json")),
+        sequential_no_filters=bool(data.get("sequential_no_filters", True)),
     )
 
     if not cfg.input_path.exists():

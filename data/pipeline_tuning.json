@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "phase1": {
+    "website_min_confidence": 85,
+    "extra_search_queries": []
+  },
+  "phase2": {
+    "fb_min_confidence": 85,
+    "extra_search_queries": []
+  },
+  "phase4": {
+    "address_accept_confidence": 75,
+    "gmaps_min_match_confidence": 85,
+    "gsearch_min_match_confidence": 75,
+    "extra_gmaps_queries": [],
+    "extra_gsearch_queries": [],
+    "disabled_sources": []
+  },
+  "history": []
+}

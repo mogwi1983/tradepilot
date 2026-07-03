@@ -1,4 +1,4 @@
-"""Compute pipeline progress stats from the working CSV."""
+"""Compute pipeline progress stats from the working CSV and campaign universe."""
 
 from __future__ import annotations
 
@@ -9,8 +9,18 @@ from typing import Any
 
 import pandas as pd
 
-from core.batch import batch_meta
+from core.batch import batch_meta, universe_meta
+from core.campaign import (
+    COHORT_ORDER,
+    compute_campaign_summary,
+    cohort_targets,
+    load_cohort_manifest,
+    normalize_supabase_rows,
+)
 from core.config import RunConfig
+from core.pipeline_state import load_pipeline_state
+from core.supabase_sync import fetch_campaign_view, fetch_contractors_for_campaign
+from core.tuning import load_tuning
 from core.utils import is_blank
 
 
@@ -116,12 +126,14 @@ def _record_summaries(df: pd.DataFrame, limit: int | None = None) -> list[dict[s
 
 
 def _record_status(row: pd.Series) -> str:
+    if str(row.get("address_found", "")).upper().strip() == "Y":
+        return "success"
     if str(row.get("mail_wave", "")) == "wave_1" and str(row.get("lob_ready", "")).lower() == "true":
         return "success"
-    if str(row.get("cohort", "")) in ("cohort_1", "cohort_2", "cohort_3") and str(
-        row.get("lob_ready", "")
-    ).lower() == "true":
-        return "success"
+    if str(row.get("mail_wave", "")) == "wave_2" and str(row.get("lob_ready", "")).lower() == "true":
+        return "warning"
+    if str(row.get("cohort", "")) in COHORT_ORDER and str(row.get("lob_ready", "")).lower() == "true":
+        return "warning"
     if str(row.get("cohort", "")) == "excluded":
         return "warning"
     if str(row.get("lob_deliverability", "")) == "undeliverable":
@@ -131,62 +143,148 @@ def _record_status(row: pd.Series) -> str:
     ):
         return "failed"
     if not is_blank(row.get("cohort")):
-        return "warning"
+        return "pending"
     if not is_blank(row.get("website_y/n")) or not is_blank(row.get("fb_y/n")):
         return "pending"
     return "pending"
 
 
+def _campaign_from_supabase(
+    config: RunConfig,
+    manifest: dict[str, Any],
+    targets: dict[str, int],
+    universe_total: int,
+) -> dict[str, Any] | None:
+    try:
+        view_rows = fetch_campaign_view()
+        if view_rows is not None:
+            # Reconstruct a minimal dataframe from view + universe summary endpoint
+            rows = fetch_contractors_for_campaign()
+            if rows:
+                df = normalize_supabase_rows(rows)
+                processed = int(df["phase7_timestamp"].apply(lambda v: not is_blank(v)).sum()) if "phase7_timestamp" in df.columns else 0
+                return compute_campaign_summary(
+                    df,
+                    targets=targets,
+                    manifest=manifest,
+                    universe_total=len(rows) or universe_total,
+                    universe_processed=processed,
+                    source="supabase",
+                )
+        rows = fetch_contractors_for_campaign()
+        if not rows:
+            return None
+        df = normalize_supabase_rows(rows)
+        processed = int(df["phase7_timestamp"].apply(lambda v: not is_blank(v)).sum()) if "phase7_timestamp" in df.columns else 0
+        return compute_campaign_summary(
+            df,
+            targets=targets,
+            manifest=manifest,
+            universe_total=len(rows) or universe_total,
+            universe_processed=processed,
+            source="supabase",
+        )
+    except Exception:
+        return None
+
+
+def _empty_campaign_payload(manifest: dict[str, Any], targets: dict[str, int], universe_total: int) -> dict[str, Any]:
+    return compute_campaign_summary(
+        pd.DataFrame(),
+        targets=targets,
+        manifest=manifest,
+        universe_total=universe_total,
+        universe_processed=0,
+        source="none",
+    )
+
+
+def _stats_shell(
+    config: RunConfig,
+    manifest: dict[str, Any],
+    targets: dict[str, int],
+    universe: dict[str, int],
+    meta: dict[str, Any],
+    job: dict[str, Any] | None,
+) -> dict[str, Any]:
+    total_goal = sum(targets.get(c, 200) for c in COHORT_ORDER)
+    return {
+        "run_id": config.run_id,
+        "output_file": str(config.output_path),
+        "total_records": 0,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "success_rate": 0,
+        "address_rate": 0,
+        "processing_summary": {
+            "in_working_file": 0,
+            "website_done": 0,
+            "facebook_done": 0,
+            "address_done": 0,
+            "lob_called": 0,
+            "classified": 0,
+            "mail_ready": 0,
+            "pending_mail_ready": 0,
+        },
+        "campaign": _empty_campaign_payload(manifest, targets, universe["total_eligible"]),
+        "universe": universe,
+        "phases": [],
+        "website": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
+        "facebook": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
+        "address": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
+        "lob": {"deliverable": 0, "undeliverable": 0, "not_called": 0, "other": 0},
+        "batch": {"batch_1": 0, "batch_2": 0, "pending": 0, "excluded": 0, "unresolved": 0},
+        "cohorts": {c: 0 for c in (*COHORT_ORDER, "excluded", "unresolved", "pending")},
+        "waves": {"wave_1": 0, "wave_2": 0, "pending": 0, "ineligible": 0},
+        "confidence_tiers": {"A": 0, "B": 0, "C": 0, "pending": 0},
+        "funnel": [
+            {"stage": "Universe eligible", "count": universe["total_eligible"]},
+            {"stage": "Wave-1 addresses (goal)", "count": 0, "goal": total_goal},
+            {"stage": "Mail ready (all waves)", "count": 0},
+            {"stage": "Current batch in file", "count": 0},
+        ],
+        "counties": {},
+        "lob_budget": _load_lob_budget(config.lob_budget_path),
+        "records": [],
+        "batch_progress": meta,
+        "job": job or {"state": "idle"},
+        "artifacts": {
+            "qa_report_exists": False,
+            "qa_report_path": str(config.run_log_dir / f"qa_report_{config.run_id}.md"),
+            "run_log_exists": False,
+            "run_log_path": str(config.run_log_dir / "run.log"),
+        },
+    }
+
+
 def compute_dashboard_stats(config: RunConfig, *, job: dict[str, Any] | None = None) -> dict[str, Any]:
     meta = batch_meta(config)
+    manifest = load_cohort_manifest(config.cohort_manifest_path)
+    targets = cohort_targets(config, manifest)
+    universe = universe_meta(config)
     output_path = config.output_path
 
+    campaign = _campaign_from_supabase(config, manifest, targets, universe["total_eligible"])
+    if campaign is None:
+        campaign = _empty_campaign_payload(manifest, targets, universe["total_eligible"])
+
     if not output_path.exists():
-        return {
-            "run_id": config.run_id,
-            "output_file": str(output_path),
-            "total_records": 0,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "success_rate": 0,
-            "address_rate": 0,
-            "phases": [],
-            "website": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
-            "facebook": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
-            "address": {"Y": 0, "N": 0, "UNCERTAIN": 0, "pending": 0},
-            "lob": {"deliverable": 0, "undeliverable": 0, "not_called": 0, "other": 0},
-            "batch": {"batch_1": 0, "batch_2": 0, "pending": 0, "excluded": 0, "unresolved": 0},
-            "cohorts": {
-                "cohort_1": 0,
-                "cohort_2": 0,
-                "cohort_3": 0,
-                "excluded": 0,
-                "unresolved": 0,
-                "pending": 0,
-            },
-            "waves": {"wave_1": 0, "wave_2": 0, "pending": 0, "ineligible": 0},
-            "confidence_tiers": {"A": 0, "B": 0, "C": 0, "pending": 0},
-            "funnel": [
-                {"stage": "Total records", "count": 0},
-                {"stage": "Address found", "count": 0},
-                {"stage": "Lob deliverable", "count": 0},
-                {"stage": "Mail ready", "count": 0},
-                {"stage": "Wave 1 (initial mail)", "count": 0},
-            ],
-            "counties": {},
-            "lob_budget": _load_lob_budget(config.lob_budget_path),
-            "records": [],
-            "batch_progress": meta,
-            "job": job or {"state": "idle"},
-            "artifacts": {
-                "qa_report_exists": False,
-                "qa_report_path": str(config.run_log_dir / f"qa_report_{config.run_id}.md"),
-                "run_log_exists": False,
-                "run_log_path": str(config.run_log_dir / "run.log"),
-            },
-        }
+        shell = _stats_shell(config, manifest, targets, universe, meta, job)
+        shell["campaign"] = campaign
+        return shell
 
     df = pd.read_csv(output_path)
     total = len(df)
+
+    if campaign.get("source") != "supabase":
+        batch_processed = int(df["phase7_timestamp"].apply(lambda v: not is_blank(v)).sum()) if "phase7_timestamp" in df.columns else 0
+        campaign = compute_campaign_summary(
+            df,
+            targets=targets,
+            manifest=manifest,
+            universe_total=universe["total_eligible"],
+            universe_processed=batch_processed,
+            source="csv_batch",
+        )
 
     phases = []
     for phase in PHASE_DEFS:
@@ -262,12 +360,26 @@ def compute_dashboard_stats(config: RunConfig, *, job: dict[str, Any] | None = N
     address_found_y = address.get("Y", 0)
     deliverable = lob.get("deliverable", 0)
 
+    def _phase_complete_count(yn_map: dict[str, int]) -> int:
+        return yn_map.get("Y", 0) + yn_map.get("N", 0) + yn_map.get("UNCERTAIN", 0)
+
+    processing_summary = {
+        "in_working_file": total,
+        "website_done": _phase_complete_count(website),
+        "facebook_done": _phase_complete_count(facebook),
+        "address_done": _phase_complete_count(address),
+        "lob_called": lob.get("deliverable", 0) + lob.get("undeliverable", 0) + lob.get("other", 0),
+        "classified": batch.get("batch_1", 0) + batch.get("batch_2", 0) + batch.get("excluded", 0) + batch.get("unresolved", 0),
+        "mail_ready": mail_ready,
+        "pending_mail_ready": max(0, total - mail_ready),
+    }
+
     funnel = [
-        {"stage": "Total records", "count": total},
-        {"stage": "Address found", "count": address_found_y},
-        {"stage": "Lob deliverable", "count": deliverable},
-        {"stage": "Mail ready", "count": mail_ready},
-        {"stage": "Wave 1 (initial mail)", "count": waves.get("wave_1", 0)},
+        {"stage": "Universe eligible", "count": universe["total_eligible"]},
+        {"stage": "Addresses found (600 goal)", "count": campaign.get("addresses_found_total", 0), "goal": campaign["total_goal_addresses"]},
+        {"stage": "Processed through pipeline", "count": campaign.get("universe", {}).get("processed_through_pipeline", 0)},
+        {"stage": "Current batch in file", "count": total},
+        {"stage": "Address found (batch)", "count": address_found_y},
     ]
 
     counties: dict[str, int] = {}
@@ -281,6 +393,8 @@ def compute_dashboard_stats(config: RunConfig, *, job: dict[str, Any] | None = N
 
     qa_report = config.run_log_dir / f"qa_report_{config.run_id}.md"
     run_log = config.run_log_dir / "run.log"
+    pipeline_state = load_pipeline_state(config.pipeline_state_path)
+    tuning = load_tuning(config.pipeline_tuning_path)
 
     return {
         "run_id": config.run_id,
@@ -289,6 +403,9 @@ def compute_dashboard_stats(config: RunConfig, *, job: dict[str, Any] | None = N
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "success_rate": success_rate,
         "address_rate": address_rate,
+        "processing_summary": processing_summary,
+        "campaign": campaign,
+        "universe": universe,
         "phases": phases,
         "website": website,
         "facebook": facebook,
@@ -303,6 +420,9 @@ def compute_dashboard_stats(config: RunConfig, *, job: dict[str, Any] | None = N
         "lob_budget": _load_lob_budget(config.lob_budget_path),
         "records": _record_summaries(df),
         "batch_progress": meta,
+        "pipeline_state": pipeline_state,
+        "address_gate_pct": config.address_gate_pct,
+        "tuning_revision": tuning.get("history", [])[-3:],
         "job": job or {"state": "idle"},
         "artifacts": {
             "qa_report_exists": qa_report.exists(),
