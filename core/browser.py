@@ -1,14 +1,20 @@
-"""
-HTTP search + page fetch for pipeline phases.
+"""HTTP search + page fetch for pipeline phases.
 
 Primary search: ddgs package (DuckDuckGo API). HTML scrape fallback if ddgs fails.
+All searches are cached in data/search_cache.sqlite to reduce duplicate DDG queries.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import sqlite3
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
@@ -24,6 +30,8 @@ USER_AGENT = (
 )
 DDG_URL = "https://html.duckduckgo.com/html/"
 SEARCH_DELAY_SEC = float(os.getenv("SEARCH_DELAY_SEC", "2.0"))
+CACHE_TTL_DAYS = int(os.getenv("SEARCH_CACHE_TTL_DAYS", "7"))
+_CACHE_PATH: Path | None = None
 
 
 @dataclass
@@ -41,6 +49,80 @@ class PageContent:
     links: list[str] = field(default_factory=list)
 
 
+def _cache_path() -> Path:
+    global _CACHE_PATH
+    if _CACHE_PATH is None:
+        root = Path(__file__).resolve().parent.parent
+        _CACHE_PATH = root / "data" / "search_cache.sqlite"
+        _CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    return _CACHE_PATH
+
+
+def _init_cache() -> None:
+    db = _cache_path()
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS search_cache (
+                query_hash TEXT PRIMARY KEY,
+                query_text TEXT NOT NULL,
+                results_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _cache_key(query: str) -> str:
+    return hashlib.sha256(query.strip().lower().encode()).hexdigest()
+
+
+def _cache_get(query: str) -> list[dict[str, Any]] | None:
+    conn = sqlite3.connect(str(_cache_path()))
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=CACHE_TTL_DAYS)).isoformat()
+        row = conn.execute(
+            "SELECT results_json, created_at FROM search_cache WHERE query_hash = ?",
+            (_cache_key(query),),
+        ).fetchone()
+        if row and row[1] >= cutoff:
+            return json.loads(row[0])
+    finally:
+        conn.close()
+    return None
+
+
+def _cache_set(query: str, results: list[dict[str, Any]]) -> None:
+    conn = sqlite3.connect(str(_cache_path()))
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO search_cache (query_hash, query_text, results_json, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (
+                _cache_key(query),
+                query.strip(),
+                json.dumps(results, ensure_ascii=False),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _cache_stats() -> dict[str, int]:
+    conn = sqlite3.connect(str(_cache_path()))
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*), SUM(LENGTH(results_json)) FROM search_cache"
+        ).fetchone()
+        return {"entries": row[0] or 0, "bytes": row[1] or 0}
+    finally:
+        conn.close()
+
+
 class BrowserSession:
     def __init__(self, logger: RunLogger | None = None) -> None:
         load_env()
@@ -51,6 +133,7 @@ class BrowserSession:
             headers={"User-Agent": USER_AGENT},
         )
         self._ddgs = DDGS()
+        _init_cache()
 
     def _retry(self, fn, label: str, attempts: int = 3):
         delay = 2.0
@@ -88,6 +171,17 @@ class BrowserSession:
         return _parse_ddg_html(resp.text, max_results=max_results)
 
     def search(self, query: str, *, max_results: int = 8) -> list[SearchResult]:
+        # Check cache first
+        cached = _cache_get(query)
+        if cached is not None:
+            results = [
+                SearchResult(title=r.get("title", ""), url=r.get("url", ""), snippet=r.get("snippet", ""))
+                for r in cached
+            ][:max_results]
+            if self.logger:
+                self.logger.debug(f"search cache HIT {query!r} -> {len(results)} results")
+            return results
+
         def _do() -> list[SearchResult]:
             try:
                 results = self._search_ddgs(query, max_results=max_results)
@@ -102,6 +196,13 @@ class BrowserSession:
         time.sleep(SEARCH_DELAY_SEC)
         if self.logger:
             self.logger.debug(f"search {query!r} -> {len(results)} results")
+
+        # Save to cache
+        serializable = [
+            {"title": r.title, "url": r.url, "snippet": r.snippet}
+            for r in results
+        ]
+        _cache_set(query, serializable)
         return results
 
     def fetch_page(self, url: str) -> PageContent:

@@ -1,0 +1,51 @@
+name: Deploy TradePilot
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: tradepilot-production-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          timeout: 60s
+          command_timeout: 120s
+          envs: GH_PAT,GITHUB_TOKEN
+          script: |
+            export GIT_ASKPASS="/tmp/github-askpass-tradepilot.sh"
+            export GIT_TERMINAL_PROMPT=0
+            cat > "$GIT_ASKPASS" <<'EOF'
+            #!/usr/bin/env bash
+            case "$1" in
+              *Username*) echo "x-access-token" ;;
+              *Password*) echo "${GH_PAT:-${GITHUB_TOKEN:-}}" ;;
+              *) echo "" ;;
+            esac
+            EOF
+            chmod 700 "$GIT_ASKPASS"
+            trap 'rm -f "$GIT_ASKPASS"' EXIT
+            bash /root/deploy-scripts/deploy-tradepilot.sh

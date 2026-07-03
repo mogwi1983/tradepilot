@@ -31,6 +31,7 @@ data/output/*.csv
 data/output/*.md
 !data/output/README.md
 !data/output/.gitkeep
+data/search_cache.sqlite
 
 # Temp / atomic write artifacts
 *.tmp

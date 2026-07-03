@@ -21,6 +21,10 @@ class LobBudgetWarningError(Exception):
     """Remaining < 50 — log warning but continue."""
 
 
+class LobNetworkError(Exception):
+    """Network/API error — transient, should be retried, not marked undeliverable."""
+
+
 @dataclass
 class LobResult:
     lob_verified: bool
@@ -111,13 +115,23 @@ def verify_address(address: dict[str, str], budget_file: str | Path, *, run_id: 
         )
 
     api_key = get_lob_api_key()
-    resp = requests.post(
-        "https://api.lob.com/v1/us_verifications",
-        auth=(api_key, ""),
-        json=payload,
-        timeout=30,
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.post(
+            "https://api.lob.com/v1/us_verifications",
+            auth=(api_key, ""),
+            json=payload,
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.exceptions.Timeout:
+        raise LobNetworkError("Lob API timeout")
+    except requests.exceptions.ConnectionError as exc:
+        raise LobNetworkError(f"Lob connection error: {exc}")
+    except requests.exceptions.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else 0
+        if status >= 500:
+            raise LobNetworkError(f"Lob server error ({status}): {exc}")
+        raise  # 4xx — real client error, let phase handle normally
     data = resp.json()
 
     budget = _load_budget(path)

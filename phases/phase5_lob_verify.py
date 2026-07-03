@@ -6,7 +6,7 @@ import pandas as pd
 
 from core.config import RunConfig
 from core.csv_io import ensure_columns, phase_complete, update_record, write_csv
-from core.lob import LobBudgetExhaustedError, check_budget, verify_address
+from core.lob import LobBudgetExhaustedError, LobNetworkError, check_budget, verify_address
 from core.logger import RunLogger
 from core.utils import is_blank, now_iso
 
@@ -90,6 +90,22 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
         except LobBudgetExhaustedError:
             logger.error("Lob budget exhausted mid-run")
             break
+        except LobNetworkError as exc:
+            logger.warning(f"Lob network error (will retry next run): {exc}", license_number=lic)
+            df = update_record(
+                df,
+                lic,
+                {
+                    "lob_verified": "false",
+                    "lob_deliverability": "error",
+                    "lob_standardized_address": "",
+                    "lob_address_type": "",
+                    "lob_vacancy": "",
+                    # Intentionally NOT setting lob_verification_timestamp — retry next run
+                },
+                phase=5,
+            )
+            write_csv(df, config.output_path)
         except Exception as exc:
             logger.error(f"Lob error: {exc}", license_number=lic)
             df = update_record(

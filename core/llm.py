@@ -199,8 +199,9 @@ def get_llm_client(logger: RunLogger | None = None, provider: Provider | None = 
 
 
 def _strip_thinking(text: str) -> str:
-    text = re.sub(r".*?", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r".*?```", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
     return text.strip()
 
 

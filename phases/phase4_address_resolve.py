@@ -161,6 +161,58 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                     except Exception as exc:
                         log.append(f"gsearch|query={q}|error={exc}")
 
+            # Source 5 — Public records (TX SOS / county appraisal)
+            if not candidates:
+                # 5a — OpenCorporates (aggregates TX SOS registered-agent data)
+                biz = str(row.get("business_name_raw", "")).strip()
+                if biz:
+                    oc_q = f"opencorporates.com {biz} Texas"
+                    try:
+                        for r in browser.search(oc_q):
+                            if "opencorporates.com" in r.url.lower():
+                                page = browser.fetch_page(r.url)
+                                extracted = llm.extract_address(page.text, biz)
+                                cand = _candidate_from_extracted(extracted, "opencorporates", r.url)
+                                log.append(f"opencorporates|url={r.url}|found={bool(cand)}")
+                                if cand and int(cand["address_confidence_%"]) >= 70:
+                                    candidates.append(cand)
+                                    break
+                    except Exception as exc:
+                        log.append(f"opencorporates|error={exc}")
+
+                # 5b — County appraisal district search
+                if not candidates:
+                    county = str(row.get("county", "")).strip().lower()
+                    owner = str(row.get("owner_name_raw", "")).strip()
+                    cad_urls = {
+                        "tarrant": "https://www.tad.org",
+                        "dallas": "https://www.dallascad.org",
+                        "denton": "https://www.dentoncad.com",
+                        "collin": "https://www.collincad.org",
+                        "johnson": "https://www.johnsoncad.org",
+                        "ellis": "https://www.elliscad.com",
+                        "harris": "https://www.hcad.org",
+                        "travis": "https://www.traviscad.org",
+                        "bexar": "https://www.bcad.org",
+                    }
+                    cad_base = cad_urls.get(county)
+                    if cad_base and owner:
+                        cad_q = f"site:{cad_base} {owner}"
+                        if biz:
+                            cad_q = f"site:{cad_base} {owner} {biz[:40]}"
+                        try:
+                            for r in browser.search(cad_q):
+                                if cad_base.replace("https://", "").replace("http://", "") in r.url.lower():
+                                    page = browser.fetch_page(r.url)
+                                    extracted = llm.extract_address(page.text, owner)
+                                    cand = _candidate_from_extracted(extracted, "county_cad", r.url)
+                                    log.append(f"county_cad|url={r.url}|found={bool(cand)}")
+                                    if cand and int(cand["address_confidence_%"]) >= 70:
+                                        candidates.append(cand)
+                                        break
+                        except Exception as exc:
+                            log.append(f"county_cad|error={exc}")
+
             if candidates:
                 best = max(candidates, key=lambda c: int(c["address_confidence_%"]))
                 unique_addrs = {c["address_raw"].strip().lower() for c in candidates}

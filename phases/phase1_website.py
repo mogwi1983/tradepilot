@@ -9,7 +9,7 @@ from core.config import RunConfig
 from core.csv_io import ensure_columns, phase_complete, update_record, write_csv
 from core.llm import get_llm_client
 from core.logger import RunLogger
-from core.utils import display_name, is_blank, is_probable_website, now_iso
+from core.utils import display_name, fuzzy_prefilter, is_blank, is_probable_website, now_iso
 
 
 def _search_bundle(row: pd.Series) -> list[str]:
@@ -64,7 +64,14 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
                     notes.append(f"query={q}|error={exc}")
                     continue
 
-                for r in results:
+                # Fuzzy pre-filter: only score the top 2-3 plausible matches
+                filtered = fuzzy_prefilter(
+                    name, results,
+                    title_attr="title", url_attr="url", snippet_attr="snippet",
+                    max_results=3, min_score=40,
+                )
+                notes.append(f"query={q}|prefilter={len(filtered)}/{len(results)}")
+                for r, fuzz_score in filtered:
                     if not is_probable_website(r.url):
                         notes.append(f"query={q}|skip_directory={r.url}")
                         continue

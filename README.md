@@ -14,13 +14,13 @@ python compare_llm.py
 
 Reports land in `runs/{run_id}/llm_comparison/`. Set `LLM_PROVIDER=minimax` in `.env.local` for production runs.
 
-## Quick start
+## Quick start (Linux / VPS)
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-Copy-Item .env.example .env.local
+cp .env.example .env.local
 # Edit .env.local with API keys
 python main.py
 ```

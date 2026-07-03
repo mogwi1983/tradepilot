@@ -41,24 +41,16 @@
       gap: 1rem;
     }
 
-    .header h1 {
-      font-size: 1.35rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-    }
-
-    .header .meta {
-      color: var(--muted);
-      font-size: 0.875rem;
-    }
+    .header h1 { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; }
+    .header .meta { color: var(--muted); font-size: 0.875rem; }
 
     .controls {
       display: flex;
       align-items: center;
       gap: 1rem;
       font-size: 0.875rem;
+      flex-wrap: wrap;
     }
-
     .controls label {
       display: flex;
       align-items: center;
@@ -76,95 +68,10 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-
     .badge.live { background: rgba(34, 197, 94, 0.2); color: var(--success); }
     .badge.error { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
-    .badge.running { background: rgba(59, 130, 246, 0.2); color: var(--accent); }
 
-    .batch-panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 1.5rem;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-    }
-
-    .batch-panel .info {
-      flex: 1;
-      min-width: 240px;
-    }
-
-    .batch-panel h2 {
-      font-size: 0.95rem;
-      font-weight: 600;
-      margin-bottom: 0.35rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .batch-panel .progress-text {
-      font-size: 1.1rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-    }
-
-    .batch-panel .sub-text {
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
-
-    .batch-panel .bar-track {
-      height: 10px;
-      margin-top: 0.65rem;
-      max-width: 420px;
-    }
-
-    .batch-actions {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 0.5rem;
-    }
-
-    .run-btn {
-      background: var(--accent);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 0.65rem 1.25rem;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      min-width: 180px;
-    }
-
-    .run-btn:hover:not(:disabled) {
-      background: #2563eb;
-    }
-
-    .run-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .job-message {
-      font-size: 0.8rem;
-      color: var(--muted);
-      text-align: right;
-      max-width: 320px;
-    }
-
-    main {
-      padding: 1.5rem 2rem 3rem;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
+    main { padding: 1.5rem 2rem 3rem; max-width: 1400px; margin: 0 auto; }
 
     .kpis {
       display: grid;
@@ -172,33 +79,15 @@
       gap: 1rem;
       margin-bottom: 1.5rem;
     }
-
     .kpi {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 1.1rem 1.25rem;
     }
-
-    .kpi .label {
-      font-size: 0.8rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.35rem;
-    }
-
-    .kpi .value {
-      font-size: 2rem;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-    }
-
-    .kpi .sub {
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-top: 0.2rem;
-    }
+    .kpi .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; }
+    .kpi .value { font-size: 2rem; font-weight: 700; letter-spacing: -0.03em; }
+    .kpi .sub { font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; }
 
     .grid-2 {
       display: grid;
@@ -206,14 +95,12 @@
       gap: 1rem;
       margin-bottom: 1.5rem;
     }
-
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 1.25rem;
     }
-
     .card h2 {
       font-size: 0.95rem;
       font-weight: 600;
@@ -223,12 +110,7 @@
       letter-spacing: 0.05em;
     }
 
-    .phase-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.65rem;
-    }
-
+    .phase-list { display: flex; flex-direction: column; gap: 0.65rem; }
     .phase-row {
       display: grid;
       grid-template-columns: 2rem 1fr 3.5rem;
@@ -236,139 +118,42 @@
       gap: 0.75rem;
       font-size: 0.875rem;
     }
-
-    .phase-row .num {
-      color: var(--muted);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .bar-track {
-      height: 8px;
-      background: var(--surface2);
-      border-radius: 4px;
-      overflow: hidden;
-    }
-
-    .bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--accent), #60a5fa);
-      border-radius: 4px;
-      transition: width 0.4s ease;
-      min-width: 0;
-    }
-
+    .phase-row .num { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .bar-track { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #60a5fa); border-radius: 4px; transition: width 0.4s ease; min-width: 0; }
     .bar-fill.done { background: linear-gradient(90deg, var(--success), #4ade80); }
+    .phase-pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
-    .phase-pct {
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-      color: var(--muted);
-    }
-
-    .chart-wrap {
-      position: relative;
-      height: 220px;
-    }
-
+    .chart-wrap { position: relative; height: 220px; }
     .chart-wrap.tall { height: 260px; }
 
-    .funnel {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
+    .funnel { display: flex; flex-direction: column; gap: 0.5rem; }
+    .funnel-step { display: flex; align-items: center; gap: 0.75rem; }
+    .funnel-label { flex: 0 0 140px; font-size: 0.85rem; color: var(--muted); }
+    .funnel-bar-wrap { flex: 1; height: 28px; background: var(--surface2); border-radius: 6px; overflow: hidden; position: relative; }
+    .funnel-bar { height: 100%; background: linear-gradient(90deg, #6366f1, var(--accent)); border-radius: 6px; transition: width 0.4s ease; display: flex; align-items: center; padding-left: 0.5rem; min-width: 2rem; }
+    .funnel-count { font-size: 0.8rem; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
 
-    .funnel-step {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .funnel-label {
-      flex: 0 0 140px;
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
-
-    .funnel-bar-wrap {
-      flex: 1;
-      height: 28px;
-      background: var(--surface2);
-      border-radius: 6px;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .funnel-bar {
-      height: 100%;
-      background: linear-gradient(90deg, #6366f1, var(--accent));
-      border-radius: 6px;
-      transition: width 0.4s ease;
-      display: flex;
-      align-items: center;
-      padding-left: 0.5rem;
-      min-width: 2rem;
-    }
-
-    .funnel-count {
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: white;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
-    }
-
-    th, td {
-      text-align: left;
-      padding: 0.55rem 0.65rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    th {
-      color: var(--muted);
-      font-weight: 600;
-      text-transform: uppercase;
-      font-size: 0.7rem;
-      letter-spacing: 0.04em;
-      position: sticky;
-      top: 0;
-      background: var(--surface);
-    }
-
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { text-align: left; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.04em; position: sticky; top: 0; background: var(--surface); }
     tr:hover td { background: var(--surface2); }
 
-    .status-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 0.35rem;
-    }
-
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.35rem; }
     .status-success { background: var(--success); }
     .status-warning { background: var(--warning); }
     .status-failed { background: var(--danger); }
     .status-pending { background: var(--pending); }
 
-    .table-wrap {
-      max-height: 420px;
-      overflow: auto;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-    }
+    .table-wrap { max-height: 420px; overflow: auto; border-radius: 8px; border: 1px solid var(--border); }
 
     .filter-row {
       display: flex;
       gap: 0.5rem;
       margin-bottom: 0.75rem;
       flex-wrap: wrap;
+      align-items: center;
     }
-
     .filter-btn {
       background: var(--surface2);
       border: 1px solid var(--border);
@@ -378,34 +163,122 @@
       font-size: 0.8rem;
       cursor: pointer;
     }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); }
 
-    .filter-btn.active {
+    .error-banner { background: rgba(239,68,68,0.15); border: 1px solid var(--danger); color: #fca5a5; padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1rem; }
+
+    .lob-budget { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.9rem; }
+    .lob-budget span strong { color: var(--text); }
+
+    .btn {
       background: var(--accent);
-      border-color: var(--accent);
+      border: none;
+      color: white;
+      padding: 0.4rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-weight: 600;
     }
+    .btn:hover { filter: brightness(1.15); }
+    .btn:disabled { opacity: 0.5; cursor: default; filter: none; }
+    .btn-sm { padding: 0.25rem 0.55rem; font-size: 0.75rem; }
+    .btn-success { background: var(--success); }
+    .btn-warning { background: var(--warning); color: #1a2332; }
+    .btn-danger { background: var(--danger); }
 
-    .error-banner {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid var(--danger);
-      color: #fca5a5;
-      padding: 1rem 1.25rem;
-      border-radius: 8px;
-      margin-bottom: 1rem;
-    }
-
-    .lob-budget {
+    .export-bar {
       display: flex;
-      gap: 1.5rem;
+      gap: 0.5rem;
       flex-wrap: wrap;
-      font-size: 0.9rem;
+      margin-bottom: 0.75rem;
     }
 
-    .lob-budget span strong {
-      color: var(--text);
+    .batch-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+      flex-wrap: wrap;
     }
+    .batch-bar input, .batch-bar select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+    .batch-bar input { width: 70px; }
+
+    .result-counter {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    .result-textarea {
+      width: 100%;
+      max-height: 200px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-family: monospace;
+      margin-top: 0.5rem;
+      resize: vertical;
+    }
+
+    /* auth overlay */
+    #auth-overlay {
+      position: fixed; inset: 0; z-index: 999;
+      background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #auth-overlay.hidden { display: none; }
+    .auth-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      width: 360px;
+      max-width: 90vw;
+    }
+    .auth-box h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+    .auth-box p { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; }
+    .auth-box input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.55rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      margin-bottom: 0.75rem;
+    }
+    .auth-box .btn { width: 100%; padding: 0.55rem; font-size: 0.9rem; }
+    .auth-error { color: var(--danger); font-size: 0.8rem; margin-top: 0.5rem; }
   </style>
 </head>
 <body>
+  <!-- Auth overlay -->
+  <div id="auth-overlay">
+    <div class="auth-box">
+      <h2>🔐 Dashboard Token Required</h2>
+      <form id="auth-form" onsubmit="event.preventDefault(); document.getElementById('token-submit').click();">
+        <p>Enter the DASHBOARD_TOKEN configured on this server.</p>
+        <input type="password" id="token-input" placeholder="Enter token…" autofocus />
+        <button type="button" class="btn" id="token-submit">Authenticate</button>
+        <div id="auth-error" class="auth-error"></div>
+      </form>
+    </div>
+  </div>
+
   <header class="header">
     <div>
       <h1>TradePilot Pipeline Dashboard</h1>
@@ -414,8 +287,7 @@
     <div class="controls">
       <span class="badge live" id="status-badge">Live</span>
       <label>
-        <input type="checkbox" id="auto-refresh" checked />
-        Auto-refresh (5s)
+        <input type="checkbox" id="auto-refresh" checked /> Auto-refresh (5s)
       </label>
     </div>
   </header>
@@ -423,27 +295,26 @@
   <main>
     <div id="error-banner" class="error-banner" style="display:none"></div>
 
-    <section class="batch-panel" id="batch-panel">
-      <div class="info">
-        <h2>Cumulative batch progress</h2>
-        <div class="progress-text" id="batch-progress-text">Loading…</div>
-        <div class="sub-text" id="batch-sub-text"></div>
-        <div class="bar-track">
-          <div class="bar-fill" id="batch-bar" style="width:0%"></div>
-        </div>
-      </div>
-      <div class="batch-actions">
-        <button class="run-btn" id="run-batch-btn" disabled>Run Next 100</button>
-        <div class="job-message" id="job-message"></div>
-      </div>
-    </section>
-
     <section class="kpis" id="kpis"></section>
 
     <section class="grid-2">
       <div class="card">
         <h2>Phase progress</h2>
         <div class="phase-list" id="phase-list"></div>
+        <!-- Batch runner -->
+        <div class="batch-bar" id="batch-bar">
+          <span>Run batch:</span>
+          <select id="batch-phase">
+            <option value="1">Phase 1 (Website)</option>
+            <option value="2">Phase 2 (Facebook)</option>
+            <option value="4">Phase 4 (Address)</option>
+            <option value="5">Phase 5 (Lob)</option>
+            <option value="7">Phase 7 (Classify)</option>
+          </select>
+          <button class="btn btn-success" id="btn-run-batch">▶ Run Next 100</button>
+          <span id="batch-status" style="color:var(--muted);font-size:0.8rem"></span>
+        </div>
+        <textarea id="batch-output" class="result-textarea" style="display:none" readonly></textarea>
       </div>
       <div class="card">
         <h2>Mail-ready funnel</h2>
@@ -465,8 +336,8 @@
         <div class="chart-wrap"><canvas id="chart-address"></canvas></div>
       </div>
       <div class="card">
-        <h2>Cohort assignment</h2>
-        <div class="chart-wrap"><canvas id="chart-cohorts"></canvas></div>
+        <h2>Batch assignment</h2>
+        <div class="chart-wrap"><canvas id="chart-batch"></canvas></div>
       </div>
     </section>
 
@@ -487,8 +358,27 @@
     </section>
 
     <section class="card">
-      <h2>Records (sorted by status)</h2>
-      <div class="filter-row" id="filters"></div>
+      <h2>Records</h2>
+      <!-- Export buttons -->
+      <div class="export-bar" id="export-bar">
+        <button class="btn btn-sm btn-success" data-export="full">📥 Full Export</button>
+        <button class="btn btn-sm" data-export="cohort_1">📥 Cohort 1</button>
+        <button class="btn btn-sm" data-export="cohort_2">📥 Cohort 2</button>
+        <button class="btn btn-sm" data-export="lob-ready">📥 Lob-Ready</button>
+      </div>
+      <!-- Filters -->
+      <div class="filter-row" id="filters">
+        <select id="cohort-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.5rem;border-radius:6px;font-size:0.8rem">
+          <option value="">All cohorts</option>
+          <option value="batch_1">Cohort 1</option>
+          <option value="batch_2">Cohort 2</option>
+          <option value="excluded">Excluded</option>
+          <option value="unresolved">Unresolved</option>
+        </select>
+        <input id="text-search" type="text" placeholder="Search name/license/county…" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.5rem;border-radius:6px;font-size:0.8rem;flex:1;min-width:160px" />
+        <input id="batch-size-input" type="number" value="100" min="10" max="500" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.5rem;border-radius:6px;font-size:0.8rem;width:70px" title="Batch size" />
+        <span class="result-counter" id="result-counter"></span>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -501,8 +391,8 @@
               <th>FB</th>
               <th>Address</th>
               <th>Lob</th>
+              <th>Batch</th>
               <th>Cohort</th>
-              <th>Wave</th>
               <th>Ready</th>
             </tr>
           </thead>
@@ -514,41 +404,77 @@
 
   <script>
     const COLORS = {
-      Y: "#22c55e",
-      N: "#ef4444",
-      UNCERTAIN: "#f59e0b",
+      Y: "#22c55e", N: "#ef4444", UNCERTAIN: "#f59e0b",
       pending: "#64748b",
-      batch_1: "#3b82f6",
-      batch_2: "#8b5cf6",
-      cohort_1: "#3b82f6",
-      cohort_2: "#8b5cf6",
-      cohort_3: "#06b6d4",
-      wave_1: "#22c55e",
-      wave_2: "#a855f7",
-      pending: "#64748b",
-      ineligible: "#94a3b8",
-      deliverable: "#22c55e",
-      undeliverable: "#ef4444",
-      not_called: "#64748b",
-      other: "#94a3b8",
-      A: "#22c55e",
-      B: "#f59e0b",
-      C: "#ef4444",
+      batch_1: "#3b82f6", batch_2: "#8b5cf6",
+      excluded: "#f59e0b", unresolved: "#64748b",
+      deliverable: "#22c55e", undeliverable: "#ef4444",
+      not_called: "#64748b", other: "#94a3b8",
+      A: "#22c55e", B: "#f59e0b", C: "#ef4444",
     };
 
     const charts = {};
     let allRecords = [];
     let activeFilter = "all";
     let refreshTimer = null;
-    let jobRunning = false;
 
+    // ── Auth ─────────────────────────────────────────────────────────────
+    function getToken() { return localStorage.getItem("tradepilot_token") || ""; }
+
+    function showAuth() {
+      document.getElementById("auth-overlay").classList.remove("hidden");
+    }
+    function hideAuth() {
+      document.getElementById("auth-overlay").classList.add("hidden");
+    }
+
+    // Check if auth is needed on first load
+    async function checkAuth() {
+      const token = getToken();
+      if (!token) { showAuth(); return false; }
+      // Quick probe — if /api/stats returns 401 we'll catch it in refresh()
+      return true;
+    }
+
+    document.getElementById("token-submit").onclick = async () => {
+      const token = document.getElementById("token-input").value;
+      localStorage.setItem("tradepilot_token", token);
+      hideAuth();
+      document.getElementById("auth-error").textContent = "";
+      await refresh();
+    };
+    document.getElementById("token-input").onkeydown = (e) => {
+      if (e.key === "Enter") document.getElementById("token-submit").click();
+    };
+
+    // ── API helper with token ────────────────────────────────────────────
+    async function apiFetch(url, opts = {}) {
+      const token = getToken();
+      const headers = { ...opts.headers };
+      if (token) headers["X-Dashboard-Token"] = token;
+      if (opts.body) headers["Content-Type"] = "application/json";
+      return fetch(url, { ...opts, headers });
+    }
+
+    // ── Derived base path ────────────────────────────────────────────────
+    function basePath() {
+      const pn = window.location.pathname;
+      // If we're at /tradepilot/ or /tradepilot/index.html, strip the trailing part
+      if (pn.endsWith("index.html")) return pn.slice(0, -10);
+      if (pn.endsWith("/")) return pn;
+      return pn + "/";
+    }
+
+    function apiUrl(endpoint) {
+      return basePath() + endpoint.replace(/^\//, "");
+    }
+
+    // ── Chart helpers ────────────────────────────────────────────────────
     function doughnutOptions() {
       return {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "bottom", labels: { color: "#8b9cb3", padding: 12 } },
-        },
+        plugins: { legend: { position: "bottom", labels: { color: "#8b9cb3", padding: 12 } } },
       };
     }
 
@@ -563,90 +489,26 @@
       }
       charts[id] = new Chart(ctx, {
         type: "doughnut",
-        data: {
-          labels,
-          datasets: [{ data, backgroundColor: colors, borderWidth: 0 }],
-        },
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
         options: doughnutOptions(),
       });
     }
 
-    function renderBatchPanel(data) {
-      const bp = data.batch_progress || {};
-      const job = data.job || {};
-      const total = bp.total_in_output ?? data.total_records ?? 0;
-      const max = bp.max_records || total || 1;
-      const remaining = bp.remaining_eligible ?? 0;
-      const batchSize = bp.batch_size ?? 100;
-      const nextCount = bp.next_batch_count ?? batchSize;
-      const pct = max > 0 ? Math.min(100, (total / max) * 100) : 0;
-
-      document.getElementById("batch-progress-text").textContent =
-        `${total} record${total === 1 ? "" : "s"} processed`;
-      document.getElementById("batch-sub-text").textContent =
-        `${remaining} eligible remaining in source · ${batchSize} per batch · cap ${max}`;
-      document.getElementById("batch-bar").style.width = `${pct}%`;
-      document.getElementById("batch-bar").classList.toggle("done", pct >= 100);
-
-      const btn = document.getElementById("run-batch-btn");
-      const isRunning = job.state === "running";
-      jobRunning = isRunning;
-
-      if (isRunning) {
-        btn.disabled = true;
-        btn.textContent = "Running…";
-      } else if (bp.can_run_more) {
-        btn.disabled = false;
-        btn.textContent = `Run Next ${nextCount}`;
-      } else if (bp.at_cap) {
-        btn.disabled = true;
-        btn.textContent = "At cap";
-      } else {
-        btn.disabled = true;
-        btn.textContent = "No more records";
-      }
-
-      const jobEl = document.getElementById("job-message");
-      if (isRunning) {
-        jobEl.textContent = job.message || "Pipeline running…";
-      } else if (job.state === "completed" || job.state === "failed") {
-        jobEl.textContent = job.message || "";
-      } else {
-        jobEl.textContent = "";
-      }
+    function chartFromMap(id, map) {
+      const labels = Object.keys(map);
+      const data = labels.map(k => map[k]);
+      const colors = labels.map(k => COLORS[k] || "#94a3b8");
+      upsertChart(id, labels, data, colors);
     }
 
-    async function runNextBatch() {
-      const btn = document.getElementById("run-batch-btn");
-      btn.disabled = true;
-      btn.textContent = "Starting…";
-      try {
-        const res = await fetch("/api/run-batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        const data = await res.json();
-        if (!data.ok) {
-          document.getElementById("error-banner").style.display = "block";
-          document.getElementById("error-banner").textContent = data.message || data.error || "Could not start batch";
-        } else {
-          document.getElementById("error-banner").style.display = "none";
-        }
-        await refresh();
-        scheduleRefresh();
-      } catch (err) {
-        document.getElementById("error-banner").style.display = "block";
-        document.getElementById("error-banner").textContent = `Failed to start batch: ${err.message}`;
-      }
-    }
-
-    document.getElementById("run-batch-btn").addEventListener("click", runNextBatch);
-
+    // ── Renderers ────────────────────────────────────────────────────────
     function renderKpis(data) {
       const kpis = [
         { label: "Total records", value: data.total_records, sub: data.run_id },
         { label: "Mail ready", value: data.funnel?.[3]?.count ?? 0, sub: `${data.success_rate ?? 0}% success rate` },
         { label: "Address found", value: data.funnel?.[1]?.count ?? 0, sub: `${data.address_rate ?? 0}% of list` },
-        { label: "Wave 1 mail", value: data.waves?.wave_1 ?? 0, sub: `${data.waves?.wave_2 ?? 0} wave 2 overflow` },
-        { label: "Cohort 1", value: data.cohorts?.cohort_1 ?? 0, sub: "no FB / no site" },
-        { label: "Cohort 3", value: data.cohorts?.cohort_3 ?? 0, sub: `${data.cohorts?.cohort_2 ?? 0} FB only` },
+        { label: "Batch 1", value: data.batch?.batch_1 ?? 0, sub: `${data.batch?.batch_2 ?? 0} batch 2` },
+        { label: "Excluded", value: data.batch?.excluded ?? 0, sub: `${data.batch?.unresolved ?? 0} unresolved` },
       ];
       document.getElementById("kpis").innerHTML = kpis.map(k => `
         <div class="kpi">
@@ -689,13 +551,6 @@
       }).join("");
     }
 
-    function chartFromMap(id, map) {
-      const labels = Object.keys(map);
-      const data = labels.map(k => map[k]);
-      const colors = labels.map(k => COLORS[k] || "#94a3b8");
-      upsertChart(id, labels, data, colors);
-    }
-
     function renderLobBudget(budget) {
       const b = budget || {};
       document.getElementById("lob-budget").innerHTML = `
@@ -713,13 +568,137 @@
 
     function renderRecords(records) {
       allRecords = records || [];
-      const filters = ["all", "success", "warning", "failed", "pending"];
-      document.getElementById("filters").innerHTML = filters.map(f => `
-        <button class="filter-btn ${activeFilter === f ? "active" : ""}" data-filter="${f}">
-          ${f === "all" ? "All" : statusLabel(f)}
-        </button>
+      const cohortFilter = document.getElementById("cohort-filter").value;
+      const searchText = document.getElementById("text-search").value.toLowerCase();
+
+      let filtered = allRecords;
+      if (cohortFilter) {
+        filtered = filtered.filter(r => (r.batch_assignment || "").toLowerCase() === cohortFilter.toLowerCase());
+      }
+      if (searchText) {
+        filtered = filtered.filter(r =>
+          (r.business_name_raw || "").toLowerCase().includes(searchText) ||
+          (r.owner_name_raw || "").toLowerCase().includes(searchText) ||
+          (r.license_number || "").toLowerCase().includes(searchText) ||
+          (r.county || "").toLowerCase().includes(searchText)
+        );
+      }
+
+      document.getElementById("result-counter").textContent = `${filtered.length} / ${allRecords.length} records`;
+
+      // Status filter buttons (add cohort as "all" context)
+      const statuses = ["all", "success", "warning", "failed", "pending"];
+      document.getElementById("filters").querySelectorAll(".filter-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.filter === activeFilter);
+      });
+
+      if (activeFilter !== "all") {
+        filtered = filtered.filter(r => r.status === activeFilter);
+      }
+
+      document.getElementById("records-body").innerHTML = filtered.map(r => `
+        <tr>
+          <td><span class="status-dot status-${r.status}"></span>${statusLabel(r.status)}</td>
+          <td>${r.license_number || ""}</td>
+          <td>${r.county || ""}</td>
+          <td title="${r.business_name_raw || r.owner_name_raw || ""}">${(r.business_name_raw || r.owner_name_raw || "").slice(0, 32)}</td>
+          <td>${r["website_y/n"] || "—"}</td>
+          <td>${r["fb_y/n"] || "—"}</td>
+          <td>${r.address_found || "—"}</td>
+          <td>${r.lob_deliverability || "—"}</td>
+          <td>${r.batch_assignment || "—"}</td>
+          <td>${r.cohort || r.batch_assignment || "—"}</td>
+          <td>${r.lob_ready || "—"}</td>
+        </tr>
       `).join("");
 
+      // Update batch button text based on remaining records
+      updateBatchButton(allRecords);
+    }
+
+    function updateBatchButton(records) {
+      const processed = records.filter(r => r.status !== "pending").length;
+      const total = records.length;
+      const remaining = total - processed;
+      const btn = document.getElementById("btn-run-batch");
+      if (remaining <= 0) {
+        btn.textContent = "✅ All processed";
+        btn.disabled = true;
+      } else {
+        const batchSize = parseInt(document.getElementById("batch-size-input").value) || 100;
+        const n = Math.min(batchSize, remaining);
+        btn.textContent = `▶ Run Next ${n} (${remaining} remaining)`;
+        btn.disabled = false;
+      }
+    }
+
+    // ── Export buttons ───────────────────────────────────────────────────
+    function setupExports() {
+      document.querySelectorAll("[data-export]").forEach(btn => {
+        btn.onclick = () => {
+          const key = btn.dataset.export;
+          let url;
+          if (key === "full") {
+            url = apiUrl("api/export?ready=false");
+          } else if (key === "lob-ready") {
+            url = apiUrl("api/export?ready=true");
+          } else {
+            url = apiUrl(`api/export?cohort=${key}&ready=true`);
+          }
+          // Add token as query param fallback for download
+          const token = getToken();
+          if (token) url += (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token);
+          window.open(url, "_blank");
+        };
+      });
+    }
+
+    // ── Batch runner ─────────────────────────────────────────────────────
+    function setupBatchRunner() {
+      document.getElementById("btn-run-batch").onclick = async () => {
+        const btn = document.getElementById("btn-run-batch");
+        const status = document.getElementById("batch-status");
+        const output = document.getElementById("batch-output");
+        const phase = document.getElementById("batch-phase").value;
+        const batchSize = document.getElementById("batch-size-input").value || "100";
+
+        btn.disabled = true;
+        btn.textContent = "⏳ Running…";
+        status.textContent = "Phase " + phase + " starting…";
+        output.style.display = "block";
+        output.value = "";
+
+        try {
+          const res = await apiFetch(apiUrl("api/run-batch"), {
+            method: "POST",
+            body: JSON.stringify({ phase, batch_size: parseInt(batchSize) }),
+          });
+          const data = await res.json();
+          if (data.exit_code === 0) {
+            status.textContent = "✅ Phase " + phase + " complete";
+          } else {
+            status.textContent = "❌ Phase " + phase + " failed (exit " + data.exit_code + ")";
+          }
+          output.value = (data.stdout || "") + "\n--- stderr ---\n" + (data.stderr || "");
+          // Auto-refresh dashboard
+          setTimeout(refresh, 1000);
+        } catch (err) {
+          status.textContent = "❌ Error: " + err.message;
+          output.value = err.message;
+        } finally {
+          btn.textContent = "▶ Run Next";
+          btn.disabled = false;
+        }
+      };
+    }
+
+    // ── Filter handlers ──────────────────────────────────────────────────
+    function setupFilters() {
+      document.getElementById("cohort-filter").onchange = () => renderRecords(allRecords);
+      document.getElementById("text-search").oninput = () => renderRecords(allRecords);
+      document.getElementById("batch-size-input").onchange = () => renderRecords(allRecords);
+
+      // Status filter buttons
       document.querySelectorAll(".filter-btn").forEach(btn => {
         btn.onclick = () => {
           activeFilter = btn.dataset.filter;
@@ -727,34 +706,33 @@
         };
       });
 
-      const filtered = activeFilter === "all"
-        ? allRecords
-        : allRecords.filter(r => r.status === activeFilter);
-
-      document.getElementById("records-body").innerHTML = filtered.map(r => `
-        <tr>
-          <td>
-            <span class="status-dot status-${r.status}"></span>${statusLabel(r.status)}
-          </td>
-          <td>${r.license_number || ""}</td>
-          <td>${r.county || ""}</td>
-          <td title="${r.business_name_raw || r.owner_name_raw || ""}">
-            ${(r.business_name_raw || r.owner_name_raw || "").slice(0, 32)}
-          </td>
-          <td>${r["website_y/n"] || "—"}</td>
-          <td>${r["fb_y/n"] || "—"}</td>
-          <td>${r.address_found || "—"}</td>
-          <td>${r.lob_deliverability || "—"}</td>
-          <td>${r.cohort || "—"}</td>
-          <td>${r.mail_wave || "—"}</td>
-          <td>${r.lob_ready || "—"}</td>
-        </tr>
-      `).join("");
+      // Rebuild status filter buttons (they were inline before but we need them here)
+      const filtersDiv = document.getElementById("filters");
+      // Insert status filter buttons after the input row but before the result counter
+      const statuses = ["all", "success", "warning", "failed", "pending"];
+      const labels = { all: "All", success: "Ready", warning: "Review", failed: "Failed", pending: "Pending" };
+      statuses.forEach(f => {
+        const btn = document.createElement("button");
+        btn.className = "filter-btn" + (f === "all" ? " active" : "");
+        btn.dataset.filter = f;
+        btn.textContent = labels[f];
+        btn.onclick = () => {
+          activeFilter = f;
+          document.querySelectorAll(".filter-btn").forEach(b => b.classList.toggle("active", b.dataset.filter === f));
+          renderRecords(allRecords);
+        };
+        filtersDiv.appendChild(btn);
+      });
     }
 
+    // ── Main refresh ─────────────────────────────────────────────────────
     async function refresh() {
       try {
-        const res = await fetch("/api/stats");
+        const res = await apiFetch(apiUrl("api/stats"));
+        if (res.status === 401) {
+          showAuth();
+          return;
+        }
         const data = await res.json();
         const banner = document.getElementById("error-banner");
         const badge = document.getElementById("status-badge");
@@ -768,24 +746,12 @@
         }
 
         banner.style.display = "none";
-
-        const job = data.job || {};
-        if (job.state === "running") {
-          badge.className = "badge running";
-          badge.textContent = "Running";
-        } else if (job.state === "failed") {
-          badge.className = "badge error";
-          badge.textContent = "Failed";
-        } else {
-          badge.className = "badge live";
-          badge.textContent = "Live";
-        }
+        badge.className = "badge live";
+        badge.textContent = "Live";
 
         const updated = new Date(data.generated_at).toLocaleString();
         document.getElementById("run-meta").textContent =
-          `Run: ${data.run_id} · ${data.total_records} records in dashboard · Updated ${updated}`;
-
-        renderBatchPanel(data);
+          `Run: ${data.run_id} · ${data.total_records} records · ${data.output_file} · Updated ${updated}`;
 
         renderKpis(data);
         renderPhases(data.phases);
@@ -793,12 +759,11 @@
         chartFromMap("chart-website", data.website);
         chartFromMap("chart-facebook", data.facebook);
         chartFromMap("chart-address", data.address);
-        chartFromMap("chart-cohorts", data.cohorts || {});
+        chartFromMap("chart-batch", data.batch);
         chartFromMap("chart-lob", data.lob);
         chartFromMap("chart-tiers", data.confidence_tiers);
         renderLobBudget(data.lob_budget);
         renderRecords(data.records);
-        scheduleRefresh();
       } catch (err) {
         document.getElementById("error-banner").style.display = "block";
         document.getElementById("error-banner").textContent = `Failed to load stats: ${err.message}`;
@@ -810,13 +775,16 @@
     function scheduleRefresh() {
       if (refreshTimer) clearInterval(refreshTimer);
       if (document.getElementById("auto-refresh").checked) {
-        const interval = jobRunning ? 2000 : 5000;
-        refreshTimer = setInterval(refresh, interval);
+        refreshTimer = setInterval(refresh, 5000);
       }
     }
 
+    // ── Init ─────────────────────────────────────────────────────────────
     document.getElementById("auto-refresh").addEventListener("change", scheduleRefresh);
-    refresh();
+    setupExports();
+    setupBatchRunner();
+    setupFilters();
+    checkAuth().then(ok => { if (ok) refresh(); });
     scheduleRefresh();
   </script>
 </body>
