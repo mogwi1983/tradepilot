@@ -14,9 +14,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from typing import Literal
 
-from openai import OpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, RateLimitError
 
 from core.env import load_env
 from core.logger import RunLogger
@@ -84,7 +85,28 @@ class LLMClient:
         if self.provider == "minimax":
             kwargs["extra_body"] = {"reasoning_split": True}
 
-        resp = self._client.chat.completions.create(**kwargs)
+        delay = 5.0
+        last_err: Exception | None = None
+        for attempt in range(6):
+            try:
+                resp = self._client.chat.completions.create(**kwargs)
+                break
+            except (RateLimitError, APITimeoutError, APIConnectionError) as exc:
+                last_err = exc
+            except APIStatusError as exc:
+                if exc.status_code in (429, 500, 502, 503, 529):
+                    last_err = exc
+                else:
+                    raise
+            else:
+                last_err = None
+            if self.logger:
+                self.logger.debug(f"{self.provider} retry {attempt + 1}/6 after error: {last_err}")
+            time.sleep(delay)
+            delay = min(delay * 2, 120.0)
+        else:
+            raise last_err  # type: ignore[misc]
+
         self.call_count += 1
 
         usage = resp.usage
