@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from core.batch import eligible_candidates, slots_available
+from core.batch import eligible_candidates, select_batch, slots_available
 from core.config import RunConfig
 from core.csv_io import ensure_columns, read_csv, update_record, write_csv
 from core.logger import RunLogger
@@ -26,7 +26,7 @@ def run(df: pd.DataFrame | None, config: RunConfig, logger: RunLogger) -> pd.Dat
     candidates = eligible_candidates(config)
 
     if slots > 0 and not candidates.empty:
-        new_rows = candidates.head(slots).copy()
+        new_rows = select_batch(candidates, slots, config).copy()
         if out_df.empty:
             out_df = new_rows.reset_index(drop=True)
         else:
@@ -34,6 +34,9 @@ def run(df: pd.DataFrame | None, config: RunConfig, logger: RunLogger) -> pd.Dat
             new_rows = ensure_columns(new_rows, list(out_df.columns))
             out_df = pd.concat([out_df, new_rows], ignore_index=True)
         logger.info(f"Admitted {len(new_rows)} new record(s) this batch")
+        if not new_rows.empty and "license_subtype" in new_rows.columns:
+            counts = new_rows["license_subtype"].astype(str).str.upper().value_counts().to_dict()
+            logger.info(f"License subtype mix: {counts}")
     elif slots <= 0:
         logger.info("max_records cap reached — no new records admitted")
     else:

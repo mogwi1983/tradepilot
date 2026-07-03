@@ -1,12 +1,14 @@
 {
-  "run_id": "cohort-campaign-600",
+  "run_id": "pilot-100",
   "input_file": "data/source/batch1_search_log_results.csv",
   "output_file": "data/output/batch1_search_log_results.csv",
   "target_counties": ["Tarrant", "Dallas", "Denton", "Collin", "Johnson", "Ellis"],
   "license_subtypes": ["BE", "BC", "BR", "AEBR", "ARBE"],
-  "max_records": 2500,
+  "max_records": 100,
   "batch_size": 100,
   "county_priority": ["Tarrant", "Dallas", "Denton", "Collin", "Johnson", "Ellis"],
+  "skip_county_validation": true,
+  "stratify_by_license_subtype": true,
   "cohort_mail_targets": {
     "cohort_1": 200,
     "cohort_2": 200,

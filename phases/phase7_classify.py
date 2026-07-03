@@ -18,11 +18,17 @@ def _cohort_targets(config: RunConfig) -> dict[str, int]:
     return {k: int(v) for k, v in raw.items()}
 
 
-def _assign_cohort(row: pd.Series, target_counties: set[str]) -> tuple[str, str, str]:
+def _assign_cohort(
+    row: pd.Series,
+    target_counties: set[str],
+    *,
+    skip_county_validation: bool = False,
+) -> tuple[str, str, str]:
     """Return (cohort, exclusion_reason, unresolved_reason)."""
-    county = normalize_county(row.get("county", ""))
-    if county not in target_counties:
-        return "excluded", "out_of_geography", ""
+    if not skip_county_validation:
+        county = normalize_county(row.get("county", ""))
+        if county not in target_counties:
+            return "excluded", "out_of_geography", ""
 
     web = str(row.get("website_y/n", "")).upper().strip()
     fb = str(row.get("fb_y/n", "")).upper().strip()
@@ -163,13 +169,13 @@ def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
             web = str(row.get("website_y/n", "")).upper()
             fb = str(row.get("fb_y/n", "")).upper()
             cohort = str(row.get("cohort", ""))
-            expected = _assign_cohort(row, target)[0]
+            expected = _assign_cohort(row, target, skip_county_validation=config.skip_county_validation)[0]
             if cohort == expected:
                 continue
         if config.resume_from_record and lic != str(config.resume_from_record):
             continue
 
-        cohort, excl, unres = _assign_cohort(row, target)
+        cohort, excl, unres = _assign_cohort(row, target, skip_county_validation=config.skip_county_validation)
         score = _score(row, cohort)
         tier = _tier(score)
         ready = _lob_ready(row)

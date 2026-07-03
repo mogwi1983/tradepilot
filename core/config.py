@@ -37,6 +37,8 @@ class RunConfig:
     resume_from_record: str | None
     cohort_mail_targets: dict[str, int] | None = None
     batch_size: int = 100
+    skip_county_validation: bool = False
+    stratify_by_license_subtype: bool = True
 
     @property
     def project_root(self) -> Path:
@@ -94,6 +96,8 @@ def load_run_config(path: str | Path = "run_config.json") -> RunConfig:
         resume_from_record=data.get("resume_from_record"),
         cohort_mail_targets=data.get("cohort_mail_targets"),
         batch_size=int(data.get("batch_size", 100)),
+        skip_county_validation=bool(data.get("skip_county_validation", False)),
+        stratify_by_license_subtype=bool(data.get("stratify_by_license_subtype", True)),
     )
 
     if not cfg.input_path.exists():
