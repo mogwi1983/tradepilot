@@ -70,6 +70,7 @@
     }
     .badge.live { background: rgba(34, 197, 94, 0.2); color: var(--success); }
     .badge.error { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+    .badge.running { background: rgba(59, 130, 246, 0.2); color: var(--accent); }
 
     main { padding: 1.5rem 2rem 3rem; max-width: 1400px; margin: 0 auto; }
 
@@ -312,6 +313,7 @@
             <option value="7">Phase 7 (Classify)</option>
           </select>
           <button class="btn btn-success" id="btn-run-batch">▶ Run Next 100</button>
+          <button class="btn" id="btn-pull-process" title="Pull unprocessed contractors from Supabase and run phases 1–5, 7">⬇ Pull &amp; Process 50</button>
           <span id="batch-status" style="color:var(--muted);font-size:0.8rem"></span>
         </div>
         <textarea id="batch-output" class="result-textarea" style="display:none" readonly></textarea>
@@ -417,6 +419,7 @@
     let allRecords = [];
     let activeFilter = "all";
     let refreshTimer = null;
+    let jobRunning = false;
 
     // ── Auth ─────────────────────────────────────────────────────────────
     function getToken() { return localStorage.getItem("tradepilot_token") || ""; }
@@ -656,6 +659,7 @@
     // ── Batch runner ─────────────────────────────────────────────────────
     function setupBatchRunner() {
       document.getElementById("btn-run-batch").onclick = async () => {
+        if (jobRunning) return;
         const btn = document.getElementById("btn-run-batch");
         const status = document.getElementById("batch-status");
         const output = document.getElementById("batch-output");
@@ -680,16 +684,79 @@
             status.textContent = "❌ Phase " + phase + " failed (exit " + data.exit_code + ")";
           }
           output.value = (data.stdout || "") + "\n--- stderr ---\n" + (data.stderr || "");
-          // Auto-refresh dashboard
           setTimeout(refresh, 1000);
         } catch (err) {
           status.textContent = "❌ Error: " + err.message;
           output.value = err.message;
         } finally {
           btn.textContent = "▶ Run Next";
-          btn.disabled = false;
+          btn.disabled = jobRunning;
         }
       };
+    }
+
+    function setupPullProcess() {
+      document.getElementById("btn-pull-process").onclick = async () => {
+        if (jobRunning) return;
+        const btn = document.getElementById("btn-pull-process");
+        const status = document.getElementById("batch-status");
+        const batchSize = parseInt(document.getElementById("batch-size-input").value) || 50;
+        const limit = Math.min(500, Math.max(1, batchSize));
+
+        btn.disabled = true;
+        btn.textContent = "⏳ Starting…";
+        status.textContent = `Pulling ${limit} from Supabase…`;
+
+        try {
+          const res = await apiFetch(apiUrl("api/pull-process"), {
+            method: "POST",
+            body: JSON.stringify({ limit }),
+          });
+          const data = await res.json();
+          if (!data.ok) {
+            status.textContent = "❌ " + (data.message || data.error || "Could not start");
+          } else {
+            status.textContent = "⏳ " + (data.message || "Job started");
+            jobRunning = true;
+            scheduleRefresh();
+          }
+          await refresh();
+        } catch (err) {
+          status.textContent = "❌ Error: " + err.message;
+        } finally {
+          btn.textContent = `⬇ Pull & Process ${limit}`;
+          btn.disabled = jobRunning;
+        }
+      };
+    }
+
+    function updateJobUi(job) {
+      const status = document.getElementById("batch-status");
+      const badge = document.getElementById("status-badge");
+      const pullBtn = document.getElementById("btn-pull-process");
+      const runBtn = document.getElementById("btn-run-batch");
+      const limit = parseInt(document.getElementById("batch-size-input").value) || 50;
+
+      jobRunning = job && job.state === "running";
+      pullBtn.disabled = jobRunning;
+      runBtn.disabled = jobRunning;
+      pullBtn.textContent = jobRunning
+        ? "⏳ Processing…"
+        : `⬇ Pull & Process ${Math.min(500, Math.max(1, limit))}`;
+
+      if (jobRunning) {
+        badge.className = "badge running";
+        badge.textContent = "Processing";
+        status.textContent = job.message || "Processing contractors…";
+      } else if (job && job.state === "completed") {
+        badge.className = "badge live";
+        badge.textContent = "Live";
+        if (job.message) status.textContent = "✅ " + job.message;
+      } else if (job && job.state === "failed") {
+        badge.className = "badge error";
+        badge.textContent = "Failed";
+        status.textContent = "❌ " + (job.message || "Job failed");
+      }
     }
 
     // ── Filter handlers ──────────────────────────────────────────────────
@@ -746,8 +813,7 @@
         }
 
         banner.style.display = "none";
-        badge.className = "badge live";
-        badge.textContent = "Live";
+        updateJobUi(data.job);
 
         const updated = new Date(data.generated_at).toLocaleString();
         document.getElementById("run-meta").textContent =
@@ -764,6 +830,7 @@
         chartFromMap("chart-tiers", data.confidence_tiers);
         renderLobBudget(data.lob_budget);
         renderRecords(data.records);
+        scheduleRefresh();
       } catch (err) {
         document.getElementById("error-banner").style.display = "block";
         document.getElementById("error-banner").textContent = `Failed to load stats: ${err.message}`;
@@ -775,7 +842,8 @@
     function scheduleRefresh() {
       if (refreshTimer) clearInterval(refreshTimer);
       if (document.getElementById("auto-refresh").checked) {
-        refreshTimer = setInterval(refresh, 5000);
+        const interval = jobRunning ? 2000 : 5000;
+        refreshTimer = setInterval(refresh, interval);
       }
     }
 
@@ -783,6 +851,7 @@
     document.getElementById("auto-refresh").addEventListener("change", scheduleRefresh);
     setupExports();
     setupBatchRunner();
+    setupPullProcess();
     setupFilters();
     checkAuth().then(ok => { if (ok) refresh(); });
     scheduleRefresh();

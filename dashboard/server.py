@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import traceback
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -24,12 +25,54 @@ if str(ROOT) not in sys.path:
 from core.config import load_run_config
 from core.env import load_env as _load_env
 from dashboard.stats import compute_dashboard_stats
+from dashboard.job_status import finish_job, read_job
 
 # Load .env.local before reading env vars
 _load_env()
 
 # ── auth ──────────────────────────────────────────────────────────────────
 TOKEN = os.environ.get("DASHBOARD_TOKEN", "")
+
+# Background DB pull/process subprocess
+_db_process: subprocess.Popen | None = None
+
+
+def _db_job_alive() -> bool:
+    global _db_process
+    if _db_process is None:
+        return False
+    if _db_process.poll() is None:
+        return True
+    _db_process = None
+    return False
+
+
+def _dashboard_job() -> dict:
+    job = read_job()
+    if job.get("state") == "running" and not _db_job_alive():
+        job = finish_job("failed", job.get("message") or "Background job stopped unexpectedly")
+    return job
+
+
+def start_db_pull(config_path: Path, limit: int = 50) -> tuple[bool, str]:
+    global _db_process
+    if _db_job_alive():
+        return False, "A DB pull/process job is already running"
+    job = read_job()
+    if job.get("state") == "running":
+        return False, "A batch job is already running"
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "dashboard.db_runner",
+        "--config",
+        str(config_path),
+        "--limit",
+        str(limit),
+    ]
+    _db_process = subprocess.Popen(cmd, cwd=str(ROOT))
+    return True, f"Pulling and processing up to {limit} contractor(s) from Supabase"
 
 
 def authenticate(headers: dict) -> bool:
@@ -144,6 +187,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/stats":
             try:
                 payload = compute_dashboard_stats(config)
+                payload["job"] = _dashboard_job()
                 self._json_response(200, payload)
             except Exception as exc:
                 self._json_response(500, {"error": str(exc),
@@ -209,6 +253,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._json_response(500, {"error": str(exc)})
 
+        # ── pull from Supabase + process ───────────────────────────────
+        elif method == "POST" and path == "/api/pull-process":
+            try:
+                limit = int(body.get("limit", 50)) if body else 50
+            except (ValueError, TypeError):
+                self._json_response(400, {"error": "Invalid limit"})
+                return
+
+            if limit < 1 or limit > 500:
+                self._json_response(400, {"error": "limit must be between 1 and 500"})
+                return
+
+            ok, message = start_db_pull(self.config_path, limit=limit)
+            code = 200 if ok else 409
+            self._json_response(code, {
+                "ok": ok,
+                "message": message,
+                "job": _dashboard_job(),
+            })
+
         else:
             self._json_response(404, {"error": "Not found"})
 
@@ -267,6 +331,8 @@ def main() -> None:
                         help="Bind port (default: 8765)")
     parser.add_argument("--config", default="run_config.json",
                         help="Path to run_config.json")
+    parser.add_argument("--open", action="store_true",
+                        help="Open the dashboard in your default browser")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -277,10 +343,15 @@ def main() -> None:
 
     server = ThreadingHTTPServer((args.host, args.port),
                                  DashboardHandler)
-    print(f"TradePilot dashboard: http://{args.host}:{args.port}")
-    print(f"Reading: {config_path}")
-    print(f"Token auth: {'ON' if TOKEN else 'OFF'}")
-    print("Press Ctrl+C to stop.")
+    display_host = "localhost" if args.host in ("127.0.0.1", "0.0.0.0", "") else args.host
+    url = f"http://{display_host}:{args.port}/"
+    print(f"TradePilot dashboard: {url}", flush=True)
+    print(f"Also reachable at: http://127.0.0.1:{args.port}/", flush=True)
+    print(f"Reading: {config_path}", flush=True)
+    print(f"Token auth: {'ON' if TOKEN else 'OFF'}", flush=True)
+    print("Press Ctrl+C to stop.", flush=True)
+    if args.open:
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

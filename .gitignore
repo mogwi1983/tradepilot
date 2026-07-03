@@ -32,6 +32,7 @@ data/output/*.md
 !data/output/README.md
 !data/output/.gitkeep
 data/search_cache.sqlite
+data/dashboard_job.json
 
 # Temp / atomic write artifacts
 *.tmp

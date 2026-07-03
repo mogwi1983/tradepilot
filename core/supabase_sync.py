@@ -18,6 +18,20 @@ import requests
 
 from core.env import load_env
 
+# DB column -> working CSV column (inverse of seed script + migration fields)
+DB_TO_CSV: dict[str, str] = {
+    "website_yn": "website_y/n",
+    "website_confidence_pct": "website_confidence_%",
+    "fb_yn": "fb_y/n",
+    "fb_confidence_pct": "fb_confidence_%",
+    "address_raw": "address",
+    "address_confidence_pct": "address_confidence_%",
+    "other_presence_yn": "other_presence_y/n",
+    "other_confidence_pct": "other_confidence_%",
+}
+
+DB_SKIP_COLUMNS = {"created_at", "updated_at"}
+
 
 def _get_supabase_config() -> dict[str, str] | None:
     load_env()
@@ -60,6 +74,168 @@ def _discover_columns(cfg: dict, table: str, unique_key: str,
     return known
 
 
+def _db_value_to_csv(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    text = str(value).strip()
+    return "" if text.lower() in ("none", "nan") else text
+
+
+def db_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    """Convert Supabase REST rows into a working CSV-shaped DataFrame."""
+    csv_rows: list[dict[str, str]] = []
+    for row in rows:
+        csv_row: dict[str, str] = {}
+        for db_col, val in row.items():
+            if db_col in DB_SKIP_COLUMNS:
+                continue
+            csv_col = DB_TO_CSV.get(db_col, db_col)
+            csv_row[csv_col] = _db_value_to_csv(val)
+        csv_rows.append(csv_row)
+
+    if not csv_rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(csv_rows)
+    if "license_number" in df.columns:
+        df["license_number"] = df["license_number"].astype(str).str.strip()
+    return df.fillna("")
+
+
+def fetch_unprocessed_contractors(
+    limit: int = 50,
+    table: str = "contractors",
+) -> list[dict[str, Any]]:
+    """Pull contractors from Supabase that have not completed classification."""
+    cfg = _get_supabase_config()
+    if not cfg:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+
+    url = f"{cfg['url']}/rest/v1/{table}"
+    headers = {
+        "apikey": cfg["key"],
+        "Authorization": f"Bearer {cfg['key']}",
+    }
+    params = {
+        "select": "*",
+        "phase7_timestamp": "is.null",
+        "or": "(batch1_excluded.is.null,batch1_excluded.eq.false)",
+        "order": "license_number.asc",
+        "limit": str(limit),
+    }
+
+    resp = requests.get(url, headers=headers, params=params, timeout=30)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Supabase fetch failed: HTTP {resp.status_code} — {resp.text[:300]}")
+
+    data = resp.json()
+    if not isinstance(data, list):
+        raise RuntimeError(f"Unexpected Supabase response: {data!r}")
+    return data
+
+
+def _prepare_df_for_upsert(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out.columns = [c.lower().strip() for c in out.columns]
+    out = out.fillna("")
+
+    col_rename: dict[str, str] = {}
+    for c in out.columns:
+        new_c = c.replace("/", "").replace("%", "pct").replace("-", "_")
+        if new_c != c:
+            col_rename[c] = new_c
+    if col_rename:
+        out = out.rename(columns=col_rename)
+    return out
+
+
+def upsert_dataframe(
+    df: pd.DataFrame,
+    *,
+    table: str = "contractors",
+    unique_key: str = "license_number",
+    batch_size: int = 200,
+    license_numbers: list[str] | None = None,
+) -> dict[str, Any]:
+    """Upsert a DataFrame into Supabase via REST API."""
+    cfg = _get_supabase_config()
+    if not cfg:
+        return {
+            "status": "skipped",
+            "reason": "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set",
+            "inserted": 0,
+            "updated": 0,
+        }
+
+    result: dict[str, Any] = {
+        "status": "ok",
+        "table": table,
+        "unique_key": unique_key,
+        "total_rows": 0,
+        "inserted": 0,
+        "updated": 0,
+        "errors": 0,
+        "error_details": [],
+    }
+
+    if df.empty:
+        return result
+
+    work = _prepare_df_for_upsert(df)
+    if license_numbers:
+        lic_set = {str(x).strip() for x in license_numbers}
+        work = work[work[unique_key].astype(str).str.strip().isin(lic_set)]
+
+    result["total_rows"] = len(work)
+    if work.empty:
+        return result
+
+    headers = {
+        "apikey": cfg["key"],
+        "Authorization": f"Bearer {cfg['key']}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+    }
+
+    first_row = {c: str(work.iloc[0][c]) for c in work.columns}
+    known_cols = _discover_columns(cfg, table, unique_key, first_row)
+    work = work[[c for c in work.columns if c in known_cols]]
+
+    for start in range(0, len(work), batch_size):
+        batch = work.iloc[start : start + batch_size]
+        rows = []
+        for _, row in batch.iterrows():
+            record = {}
+            for c in work.columns:
+                val = str(row[c])
+                record[c] = None if val == "" or val == "nan" else val
+            rows.append(record)
+
+        url = f"{cfg['url']}/rest/v1/{table}"
+        params = {"on_conflict": unique_key}
+
+        try:
+            resp = requests.post(url, headers=headers, params=params,
+                                 json=rows, timeout=60)
+            if resp.status_code in (200, 201):
+                result["inserted"] += len(rows)
+            else:
+                result["errors"] += 1
+                result["error_details"].append(
+                    f"batch {start}..{start + batch_size}: "
+                    f"HTTP {resp.status_code} - {resp.text[:200]}"
+                )
+        except requests.exceptions.RequestException as exc:
+            result["errors"] += 1
+            result["error_details"].append(
+                f"batch {start}..{start + batch_size}: {exc}"
+            )
+
+    return result
+
+
 def upsert_csv(
     csv_path: str | Path,
     table: str = "contractors",
@@ -97,67 +273,14 @@ def upsert_csv(
     if df.empty:
         return result
 
-    # Normalise column names to lowercase, replace NaN
-    df.columns = [c.lower().strip() for c in df.columns]
-    df = df.fillna("")
-
-    # Translate CSV column names to Postgres-compatible names
-    col_rename = {}
-    for c in df.columns:
-        new_c = c.replace("/", "").replace("%", "pct").replace("-", "_")
-        if new_c != c:
-            col_rename[c] = new_c
-    if col_rename:
-        df = df.rename(columns=col_rename)
-        result["renamed_columns"] = col_rename
-
-    headers = {
-        "apikey": cfg["key"],
-        "Authorization": f"Bearer {cfg['key']}",
-        "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates",
-    }
-
-    # Discover valid columns by probing with first row
-    first_row = {c: str(df.iloc[0][c]) for c in df.columns}
-    known_cols = _discover_columns(cfg, table, unique_key, first_row)
-    result["filtered_columns"] = len(df.columns) - len(known_cols)
-
-    # Filter DataFrame to only known columns
-    df = df[[c for c in df.columns if c in known_cols]]
-
-    # Upsert in batches
-    for start in range(0, len(df), batch_size):
-        batch = df.iloc[start : start + batch_size]
-        rows = []
-        for _, row in batch.iterrows():
-            record = {}
-            for c in df.columns:
-                val = str(row[c])
-                record[c] = None if val == "" or val == "nan" else val
-            rows.append(record)
-
-        url = f"{cfg['url']}/rest/v1/{table}"
-        params = {"on_conflict": unique_key}
-
-        try:
-            resp = requests.post(url, headers=headers, params=params,
-                                 json=rows, timeout=60)
-            if resp.status_code in (200, 201):
-                result["inserted"] += len(rows)
-            else:
-                result["errors"] += 1
-                result["error_details"].append(
-                    f"batch {start}..{start + batch_size}: "
-                    f"HTTP {resp.status_code} - {resp.text[:200]}"
-                )
-        except requests.exceptions.RequestException as exc:
-            result["errors"] += 1
-            result["error_details"].append(
-                f"batch {start}..{start + batch_size}: {exc}"
-            )
-
-    return result
+    sync_result = upsert_dataframe(
+        df,
+        table=table,
+        unique_key=unique_key,
+        batch_size=batch_size,
+    )
+    sync_result["csv_path"] = str(csv_path)
+    return sync_result
 
 
 def main() -> None:

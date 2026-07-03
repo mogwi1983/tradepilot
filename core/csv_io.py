@@ -4,10 +4,20 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+PostWriteHook = Callable[[pd.DataFrame, Path], None]
+_post_write_hook: PostWriteHook | None = None
+
+
+def register_post_write_hook(hook: PostWriteHook | None) -> None:
+    """Optional callback invoked after each write_csv (used for Supabase sync)."""
+    global _post_write_hook
+    _post_write_hook = hook
 
 # Source + name-variation columns — read-only for phases 1+
 READONLY_COLUMNS = {
@@ -132,6 +142,8 @@ def write_csv(df: pd.DataFrame, path: str | Path) -> None:
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
+    if _post_write_hook is not None:
+        _post_write_hook(df, path)
 
 
 def update_record(
