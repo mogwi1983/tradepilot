@@ -7,3 +7,5 @@ python-dotenv>=1.0
 requests>=2.31
 lob-python>=4.0
 ddgs>=9.0
+psycopg2-binary>=2.9
+supabase>=2.0
