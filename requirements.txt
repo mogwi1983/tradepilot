@@ -1,5 +1,3 @@
-# Pin major versions when implementing — see CURSOR-BOOTSTRAP.md Step 6
-browser-use>=0.1
 openai>=1.0
 pandas>=2.0
 httpx>=0.27
@@ -8,3 +6,4 @@ requests>=2.31
 lob-python>=4.0
 ddgs>=9.0
 rapidfuzz>=3.0
+usaddress>=0.5

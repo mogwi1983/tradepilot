@@ -38,3 +38,4 @@ data/pipeline_state.json
 # Temp / atomic write artifacts
 *.tmp
 *.swp
+*.log

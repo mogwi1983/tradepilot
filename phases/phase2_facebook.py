@@ -1,130 +1,109 @@
-"""Phase 2 — Facebook Detection."""
+"""Phase 2 — Facebook Detection module."""
 
 from __future__ import annotations
 
 import pandas as pd
+from rapidfuzz import fuzz
 
 from core.browser import BrowserSession
 from core.config import RunConfig
-from core.csv_io import ensure_columns, phase_complete, update_record, write_csv
+from core.csv_io import ensure_columns, update_record
 from core.llm import get_llm_client
-from core.logger import RunLogger
-from core.tuning import format_query_templates, load_tuning, phase_tuning
-from core.utils import display_name, fuzzy_prefilter, is_blank, now_iso
+from core.system_logger import get_system_logger
+from core.utils import is_blank, now_iso
 
 
 def _search_bundle(row: pd.Series) -> list[str]:
-    county = str(row.get("county", "")).title()
-    return [
-        f"{row.get('business_name_raw', '')} site:facebook.com",
-        f"{row.get('biz_var_1', '')} site:facebook.com",
-        f"{row.get('biz_var_2', '')} {county} Facebook",
-        f"{row.get('combo_var_1', '')} site:facebook.com",
-        f"{row.get('owner_var_1', '')} HVAC Facebook {county} TX",
-    ]
+    biz = str(row.get("business_name", "")).strip()
+    county = str(row.get("county", "")).strip().title()
+    owner = str(row.get("owner_name", "")).strip()
+
+    queries = []
+    if biz:
+        queries.append(f"{biz} site:facebook.com")
+        queries.append(f"{biz} {county} Facebook")
+    if owner:
+        queries.append(f"{owner} HVAC site:facebook.com")
+
+    return list(dict.fromkeys(q for q in queries if len(q) > 4))
 
 
-def _is_fb_url(url: str) -> bool:
-    return "facebook.com" in url.lower()
+def _is_valid_fb_page(url: str) -> bool:
+    url_lower = url.lower()
+    if "facebook.com" not in url_lower:
+        return False
+    # Exclude personal profiles, groups, and search pages
+    excluded_path_tokens = ["/profile.php", "/people/", "/groups/", "/search/", "/events/"]
+    return not any(token in url_lower for token in excluded_path_tokens)
 
 
-def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
-    logger.set_phase("phase2")
+def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
+    logger = get_system_logger()
     df = ensure_columns(
         df,
         [
-            "fb_y/n",
+            "fb_yn",
             "fb_url",
-            "fb_page_name",
-            "fb_last_post_date",
-            "fb_confidence_%",
-            "fb_search_notes",
             "phase2_timestamp",
         ],
     )
 
-    browser = BrowserSession(logger)
-    llm = get_llm_client(logger)
-    tuning = load_tuning(config.pipeline_tuning_path)
-    p2 = phase_tuning(tuning, "phase2")
-    min_y = int(p2.get("fb_min_confidence", 85))
-    min_uncertain = max(50, min_y - 25)
+    browser = BrowserSession()
+    llm = get_llm_client()
 
     try:
-        for _, row in df.iterrows():
-            lic = str(row["license_number"])
-            if phase_complete(row, 2) or not is_blank(row.get("fb_y/n")):
-                continue
-            if config.resume_from_record and lic != str(config.resume_from_record):
+        for idx, row in df.iterrows():
+            lic = str(row["license_number"]).strip()
+            if not is_blank(row.get("fb_yn")):
                 continue
 
-            notes: list[str] = []
+            biz_name = str(row.get("business_name", "")).strip() or str(row.get("owner_name", "")).strip()
             best_url = ""
-            best_name = ""
             best_conf = 0
-            name = display_name(row)
 
-            for q in _search_bundle(row) + format_query_templates(
-                p2.get("extra_search_queries", []), row
-            ):
-                q = " ".join(str(q).split())
-                if len(q) < 4:
-                    continue
-                logger.debug(f"facebook search: {q}", license_number=lic)
+            for q in _search_bundle(row):
                 try:
                     results = browser.search(q)
                 except Exception as exc:
-                    notes.append(f"query={q}|error={exc}")
+                    logger.warning("Phase2", f"Search error for query '{q}': {exc}", license_number=lic)
                     continue
 
-                # Fuzzy pre-filter: only score the top 2-3 plausible matches
-                filtered = fuzzy_prefilter(
-                    name, results,
-                    title_attr="title", url_attr="url", snippet_attr="snippet",
-                    max_results=3, min_score=40,
-                )
-                notes.append(f"query={q}|prefilter={len(filtered)}/{len(results)}")
-                for r, fuzz_score in filtered:
-                    if not _is_fb_url(r.url):
+                for r in results:
+                    if not _is_valid_fb_page(r.url):
                         continue
+
+                    # RapidFuzz title pre-score
+                    fuzz_score = fuzz.token_set_ratio(biz_name.lower(), r.title.lower())
+                    if fuzz_score < 40:
+                        continue
+
                     ctx = f"Title: {r.title}\nSnippet: {r.snippet}"
-                    conf = llm.score_match(r.title, name, ctx)
-                    notes.append(f"query={q}|url={r.url}|conf={conf}")
+                    conf = llm.score_match(r.title, biz_name, ctx)
                     if conf > best_conf:
                         best_conf = conf
                         best_url = r.url
-                        best_name = r.title
 
-            if best_conf >= min_y and best_url:
-                try:
-                    page = browser.fetch_page(best_url)
-                    yn, conf = llm.classify_fb_page(page.text, name)
-                    if conf < best_conf:
-                        conf = best_conf
-                except Exception as exc:
-                    yn, conf = "UNCERTAIN", best_conf
-                    notes.append(f"fetch_error={exc}")
-            elif min_uncertain <= best_conf < min_y:
-                yn, conf = "UNCERTAIN", best_conf
-            else:
-                yn, conf = "N", best_conf
+                    if best_conf >= 85:
+                        break
+
+                if best_conf >= 85:
+                    break
+
+            yn = "Y" if best_conf >= 85 and best_url else "N"
+            final_url = best_url if yn == "Y" else ""
 
             df = update_record(
                 df,
                 lic,
                 {
-                    "fb_y/n": yn,
-                    "fb_url": best_url if yn in ("Y", "UNCERTAIN") else "",
-                    "fb_page_name": best_name,
-                    "fb_last_post_date": "",
-                    "fb_confidence_%": str(conf),
-                    "fb_search_notes": "|".join(notes),
+                    "fb_yn": yn,
+                    "fb_url": final_url,
                     "phase2_timestamp": now_iso(),
                 },
                 phase=2,
             )
-            write_csv(df, config.output_path)
-            logger.info(f"facebook={yn} conf={conf}", license_number=lic)
+            logger.info("Phase2", f"Facebook: fb_yn={yn} (conf={best_conf}) url={final_url}", license_number=lic)
+
     finally:
         browser.close()
 

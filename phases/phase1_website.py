@@ -1,115 +1,114 @@
-"""Phase 1 — Website Detection."""
+"""Phase 1 — Website Detection module."""
 
 from __future__ import annotations
 
 import pandas as pd
+from rapidfuzz import fuzz
 
 from core.browser import BrowserSession
 from core.config import RunConfig
-from core.csv_io import ensure_columns, phase_complete, update_record, write_csv
+from core.csv_io import ensure_columns, update_record
 from core.llm import get_llm_client
-from core.logger import RunLogger
-from core.tuning import format_query_templates, load_tuning, phase_tuning
-from core.utils import display_name, fuzzy_prefilter, is_blank, is_probable_website, now_iso
+from core.system_logger import get_system_logger
+from core.utils import is_blank, now_iso
+
+SKIP_DOMAINS = {
+    "facebook.com", "instagram.com", "linkedin.com", "twitter.com", "x.com",
+    "yelp.com", "angi.com", "angieslist.com", "homeadvisor.com", "thumbtack.com",
+    "yellowpages.com", "bbb.org", "houzz.com", "mapquest.com", "dnb.com",
+    "bloomberg.com", "opencorporates.com", "indeed.com", "ziprecruiter.com",
+}
 
 
 def _search_bundle(row: pd.Series) -> list[str]:
-    county = str(row.get("county", "")).title()
-    return [
-        f"{row.get('business_name_raw', '')} {county} TX",
-        f"{row.get('biz_var_1', '')} {county} TX",
-        f"{row.get('biz_var_2', '')} HVAC TX",
-        f"{row.get('combo_var_1', '')} {county} TX",
-        f"{row.get('owner_var_1', '')} HVAC {county} TX",
-    ]
+    biz = str(row.get("business_name", "")).strip()
+    county = str(row.get("county", "")).strip().title()
+    owner = str(row.get("owner_name", "")).strip()
+
+    queries = []
+    if biz:
+        queries.append(f"{biz} {county} TX")
+        queries.append(f"{biz} HVAC Texas")
+    if owner:
+        queries.append(f"{owner} HVAC {county} TX")
+    if biz and owner:
+        queries.append(f"{biz} {owner} TX")
+
+    return list(dict.fromkeys(q for q in queries if len(q) > 4))
 
 
-def run(df: pd.DataFrame, config: RunConfig, logger: RunLogger) -> pd.DataFrame:
-    logger.set_phase("phase1")
+def _is_directory(url: str) -> bool:
+    url_lower = url.lower()
+    return any(domain in url_lower for domain in SKIP_DOMAINS)
+
+
+def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
+    logger = get_system_logger()
     df = ensure_columns(
         df,
         [
-            "website_y/n",
+            "website_yn",
             "website_url",
-            "website_confidence_%",
-            "website_search_notes",
             "phase1_timestamp",
         ],
     )
 
-    browser = BrowserSession(logger)
-    llm = get_llm_client(logger)
-    target = display_name
-    tuning = load_tuning(config.pipeline_tuning_path)
-    p1 = phase_tuning(tuning, "phase1")
-    min_y = int(p1.get("website_min_confidence", 85))
-    min_uncertain = max(50, min_y - 25)
+    browser = BrowserSession()
+    llm = get_llm_client()
 
     try:
         for idx, row in df.iterrows():
-            lic = str(row["license_number"])
-            if phase_complete(row, 1) or not is_blank(row.get("website_y/n")):
-                continue
-            if config.resume_from_record and lic != str(config.resume_from_record):
+            lic = str(row["license_number"]).strip()
+            if not is_blank(row.get("website_yn")):
                 continue
 
-            notes: list[str] = []
+            biz_name = str(row.get("business_name", "")).strip() or str(row.get("owner_name", "")).strip()
             best_url = ""
             best_conf = 0
-            name = target(row)
 
-            for q in _search_bundle(row) + format_query_templates(
-                p1.get("extra_search_queries", []), row
-            ):
-                q = " ".join(str(q).split())
-                if len(q) < 4:
-                    continue
-                logger.debug(f"website search: {q}", license_number=lic)
+            for q in _search_bundle(row):
                 try:
                     results = browser.search(q)
                 except Exception as exc:
-                    notes.append(f"query={q}|error={exc}")
+                    logger.warning("Phase1", f"Search error for query '{q}': {exc}", license_number=lic)
                     continue
 
-                # Fuzzy pre-filter: only score the top 2-3 plausible matches
-                filtered = fuzzy_prefilter(
-                    name, results,
-                    title_attr="title", url_attr="url", snippet_attr="snippet",
-                    max_results=3, min_score=40,
-                )
-                notes.append(f"query={q}|prefilter={len(filtered)}/{len(results)}")
-                for r, fuzz_score in filtered:
-                    if not is_probable_website(r.url):
-                        notes.append(f"query={q}|skip_directory={r.url}")
+                for r in results:
+                    if _is_directory(r.url):
                         continue
+
+                    # RapidFuzz title pre-score
+                    fuzz_score = fuzz.token_set_ratio(biz_name.lower(), r.title.lower())
+                    if fuzz_score < 40:
+                        continue
+
                     ctx = f"Title: {r.title}\nSnippet: {r.snippet}\nURL: {r.url}"
-                    conf = llm.score_match(r.url, name, ctx)
-                    notes.append(f"query={q}|url={r.url}|conf={conf}")
+                    conf = llm.score_match(r.url, biz_name, ctx)
                     if conf > best_conf:
                         best_conf = conf
                         best_url = r.url
 
-            if best_conf >= min_y:
-                yn, url, conf = "Y", best_url, best_conf
-            elif best_conf >= min_uncertain:
-                yn, url, conf = "UNCERTAIN", best_url, best_conf
-            else:
-                yn, url, conf = "N", "", best_conf
+                    if best_conf >= 85:
+                        break
+
+                if best_conf >= 85:
+                    break
+
+            yn = "Y" if best_conf >= 85 and best_url else "N"
+            final_url = best_url if yn == "Y" else ""
 
             df = update_record(
                 df,
                 lic,
                 {
-                    "website_y/n": yn,
-                    "website_url": url,
-                    "website_confidence_%": str(conf),
-                    "website_search_notes": "|".join(notes),
+                    "website_yn": yn,
+                    "website_url": final_url,
                     "phase1_timestamp": now_iso(),
                 },
                 phase=1,
             )
-            write_csv(df, config.output_path)
-            logger.info(f"website={yn} conf={conf}", license_number=lic)
+            logger.info("Phase1", f"Website: website_yn={yn} (conf={best_conf}) url={final_url}", license_number=lic)
+
     finally:
         browser.close()
 

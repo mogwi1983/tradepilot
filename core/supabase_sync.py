@@ -108,7 +108,12 @@ def fetch_next_batch_sequential(
     limit: int = 100,
     table: str = "contractors",
 ) -> list[dict[str, Any]]:
-    """Next unprocessed contractors in CSV seed order (top to bottom)."""
+    """Next unprocessed contractors in CSV seed order (top to bottom).
+
+    When BATCH_ASSIGNMENT env var is set, only fetches records with
+    that batch_assignment value (for parallel processing).
+    """
+    import os as _os
     cfg = _get_supabase_config()
     if not cfg:
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
@@ -124,6 +129,10 @@ def fetch_next_batch_sequential(
         "order": "seed_row_order.asc.nullslast,license_number.asc",
         "limit": str(limit),
     }
+
+    batch_filter = _os.environ.get("BATCH_ASSIGNMENT", "").strip()
+    if batch_filter:
+        params["batch_assignment"] = f"eq.{batch_filter}"
 
     resp = requests.get(url, headers=headers, params=params, timeout=30)
     if resp.status_code != 200:

@@ -1,27 +1,9 @@
 {
-  "run_id": "batch1-600-campaign",
-  "input_file": "data/source/batch1_search_log_results.csv",
-  "output_file": "data/output/batch1_search_log_results.csv",
-  "target_counties": [],
-  "license_subtypes": [],
-  "max_records": 0,
-  "batch_size": 100,
-  "address_gate_pct": 30,
-  "auto_continue_batches": true,
-  "sequential_no_filters": true,
-  "skip_county_validation": true,
-  "db_process_phases": [1, 2, 3, 4, 7],
-  "cohort_mail_targets": {
-    "cohort_1": 200,
-    "cohort_2": 200,
-    "cohort_3": 200
-  },
-  "cohort_manifest_file": "data/source/cohort_manifest.json",
-  "pipeline_tuning_file": "data/pipeline_tuning.json",
-  "pipeline_state_file": "data/pipeline_state.json",
-  "county_priority": [],
-  "lob_budget_file": "data/lob_budget.json",
-  "phases_to_run": [1, 2, 3, 4, 7],
+  "run_id": "batch1-2083-run",
+  "input_file": "data/source/new_batch.csv",
+  "output_file": "data/output/working_batch.csv",
+  "batch_size": 20,
+  "phases_to_run": [1, 2, 4, 7],
   "start_phase": 1,
   "resume_from_record": null
 }
