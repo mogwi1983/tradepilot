@@ -1,6 +1,7 @@
 """Phase 4 — Address Resolution module.
 
 Uses a multi-source free ladder and strict 100% code-based validation (Zero AI).
+Includes County Appraisal District (CAD) owner property address lookup.
 """
 
 from __future__ import annotations
@@ -32,12 +33,10 @@ def _try_validate_text(text: str, source_name: str, logger: any, lic: str) -> tu
     if not text:
         return None, ""
 
-    # Test direct text first
     parsed = validate_and_parse_address(text)
     if parsed:
         return parsed, source_name
 
-    # Scan text for candidates
     candidates = extract_candidate_addresses(text)
     for cand in candidates:
         parsed = validate_and_parse_address(cand)
@@ -81,8 +80,9 @@ def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
             if not parsed_addr and str(row.get("website_yn", "")).upper() == "Y" and row.get("website_url"):
                 web_url = str(row["website_url"])
                 try:
-                    for suffix in ("", "/contact", "/about"):
-                        target_url = web_url.rstrip("/") + suffix if suffix else web_url
+                    # Clean trailing path if needed before checking contact/about
+                    base_url = web_url.split("?")[0].rstrip("/")
+                    for target_url in (web_url, base_url + "/contact", base_url + "/about"):
                         page = browser.fetch_page(target_url)
                         parsed_addr, found_source = _try_validate_text(page.text, "website", logger, lic)
                         if parsed_addr:
@@ -99,7 +99,7 @@ def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
                 except Exception as exc:
                     logger.warning("Phase4", f"Facebook fetch failed '{fb_url}': {exc}", license_number=lic)
 
-            # Ladder Priority 3 — Google Search Snippets
+            # Ladder Priority 3 — Google Search Snippets (Business)
             if not parsed_addr:
                 q_list = []
                 if biz_name:
@@ -120,7 +120,7 @@ def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
                     if parsed_addr:
                         break
 
-            # Ladder Priority 4 — OpenCorporates
+            # Ladder Priority 4 — OpenCorporates Corporate Filings
             if not parsed_addr and biz_name:
                 q = f"site:opencorporates.com {biz_name} Texas"
                 try:
@@ -134,20 +134,28 @@ def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
                 except Exception as exc:
                     logger.warning("Phase4", f"OpenCorporates search failed '{q}': {exc}", license_number=lic)
 
-            # Ladder Priority 5 — County Appraisal District (CAD)
-            if not parsed_addr and county in CAD_URLS:
-                cad_domain = CAD_URLS[county]
-                q = f"site:{cad_domain} {owner_name or biz_name}"
-                try:
-                    results = browser.search(q)
-                    for r in results:
-                        if cad_domain in r.url.lower():
-                            page = browser.fetch_page(r.url)
-                            parsed_addr, found_source = _try_validate_text(page.text, "county_cad", logger, lic)
+            # Ladder Priority 5 — County Appraisal District (CAD) Owner Property Search
+            if not parsed_addr and owner_name:
+                cad_domain = CAD_URLS.get(county, "")
+                cad_queries = [
+                    f'"{owner_name}" {county} CAD property address',
+                    f'"{owner_name}" {county} County TX property address',
+                ]
+                if cad_domain:
+                    cad_queries.insert(0, f'site:{cad_domain} "{owner_name}"')
+
+                for q in cad_queries:
+                    try:
+                        results = browser.search(q)
+                        for r in results:
+                            snippet_text = f"{r.title} {r.snippet}"
+                            parsed_addr, found_source = _try_validate_text(snippet_text, "cad_owner_home", logger, lic)
                             if parsed_addr:
                                 break
-                except Exception as exc:
-                    logger.warning("Phase4", f"County CAD search failed '{q}': {exc}", license_number=lic)
+                    except Exception as exc:
+                        logger.warning("Phase4", f"CAD search failed '{q}': {exc}", license_number=lic)
+                    if parsed_addr:
+                        break
 
             # Save results
             if parsed_addr:
