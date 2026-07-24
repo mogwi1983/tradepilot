@@ -1,7 +1,7 @@
 """Phase 4 — Address Resolution module.
 
 Uses a multi-source free ladder and strict 100% code-based validation (Zero AI).
-Includes County Appraisal District (CAD) owner property address lookup.
+Includes County Appraisal District (CAD) owner property address lookup and statewide fallback queries.
 """
 
 from __future__ import annotations
@@ -80,7 +80,6 @@ def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
             if not parsed_addr and str(row.get("website_yn", "")).upper() == "Y" and row.get("website_url"):
                 web_url = str(row["website_url"])
                 try:
-                    # Clean trailing path if needed before checking contact/about
                     base_url = web_url.split("?")[0].rstrip("/")
                     for target_url in (web_url, base_url + "/contact", base_url + "/about"):
                         page = browser.fetch_page(target_url)
@@ -99,7 +98,7 @@ def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
                 except Exception as exc:
                     logger.warning("Phase4", f"Facebook fetch failed '{fb_url}': {exc}", license_number=lic)
 
-            # Ladder Priority 3 — Google Search Snippets (Business)
+            # Ladder Priority 3 — Google Search Snippets (County Constrained)
             if not parsed_addr:
                 q_list = []
                 if biz_name:
@@ -154,6 +153,27 @@ def run(df: pd.DataFrame, config: RunConfig) -> pd.DataFrame:
                                 break
                     except Exception as exc:
                         logger.warning("Phase4", f"CAD search failed '{q}': {exc}", license_number=lic)
+                    if parsed_addr:
+                        break
+
+            # Ladder Priority 6 — Statewide Search Fallback (Cross-County Operators)
+            if not parsed_addr:
+                fallback_queries = []
+                if biz_name:
+                    fallback_queries.append(f'"{biz_name}" Texas address')
+                if owner_name:
+                    fallback_queries.append(f'"{owner_name}" Texas property address')
+
+                for q in fallback_queries:
+                    try:
+                        results = browser.search(q)
+                        for r in results:
+                            snippet_text = f"{r.title} {r.snippet}"
+                            parsed_addr, found_source = _try_validate_text(snippet_text, "gsearch_statewide", logger, lic)
+                            if parsed_addr:
+                                break
+                    except Exception as exc:
+                        logger.warning("Phase4", f"Statewide search failed '{q}': {exc}", license_number=lic)
                     if parsed_addr:
                         break
 
